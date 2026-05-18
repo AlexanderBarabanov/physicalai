@@ -160,10 +160,14 @@ def _import_class(class_path: str) -> type:
     return getattr(module, class_name)
 
 
+_MAX_COMPONENT_DEPTH = 10
+
+
 def instantiate_component(
     spec: ComponentSpec,
     *,
     registry: ComponentRegistry | None = None,
+    _depth: int = 0,
 ) -> object:
     """Import the class described by *spec* and return a live instance.
 
@@ -188,7 +192,16 @@ def instantiate_component(
 
     Returns:
         An instance of the resolved class.
+
+    Raises:
+        ValueError: If nested ``ComponentSpec`` dicts exceed
+            ``_MAX_COMPONENT_DEPTH`` levels of nesting.
     """
+    if _depth > _MAX_COMPONENT_DEPTH:
+        raise ValueError(
+            f"component nesting depth exceeded the limit of {_MAX_COMPONENT_DEPTH}"
+        )
+
     reg = registry or component_registry
 
     if spec.class_path:
@@ -201,6 +214,7 @@ def instantiate_component(
                 resolved_args[key] = instantiate_component(
                     type(spec).model_validate(value),
                     registry=reg,
+                    _depth=_depth + 1,
                 )
             else:
                 resolved_args[key] = value
@@ -216,6 +230,7 @@ def instantiate_component(
             resolved_params[key] = instantiate_component(
                 type(spec).model_validate(value),
                 registry=reg,
+                _depth=_depth + 1,
             )
         else:
             resolved_params[key] = value
