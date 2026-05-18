@@ -43,8 +43,14 @@ is a finding.
 
 import json
 import sys
+from unittest.mock import MagicMock
 
 import atheris
+
+# physicalai.robot.so101.__init__ imports SO101 which imports scservo_sdk
+# (the Feetech servo hardware SDK).  Stub it out exactly as the unit tests do
+# so the harness can run without physical hardware or the optional so101 extra.
+sys.modules.setdefault("scservo_sdk", MagicMock())
 
 with atheris.instrument_imports():
     from physicalai.robot.so101.calibration import SO101Calibration
