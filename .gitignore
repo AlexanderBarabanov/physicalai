@@ -38,6 +38,9 @@ pip-delete-this-directory.txt
 
 # Unit test / coverage reports
 htmlcov/
+
+# Atheris fuzzer crash artifacts (written by fuzz harnesses during local runs)
+tests/fuzz/crashes/
 .tox/
 .nox/
 .coverage

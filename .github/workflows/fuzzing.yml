@@ -1,0 +1,124 @@
+# Atheris coverage-guided fuzzing for physicalai security-sensitive parsers.
+#
+# Targets selected from the threat model (physicalai-threat-model.md):
+#   fuzz_manifest             — TM-001 (class_path passthrough), TM-009 (nested
+#                               init_args parse depth), TM-010 (policy.name
+#                               path traversal characters at parse layer)
+#   fuzz_calibration          — TM-008 (SO-101 calibration numeric bounds:
+#                               inverted range_min/range_max, extreme
+#                               homing_offset values)
+#   fuzz_component_instantiate — TM-009 (RecursionError from deeply nested
+#                               init_args in instantiate_component())
+#   fuzz_reconfigure_spec     — TM-007 (IPC reconfigure spec_data parsed only
+#                               as isinstance(dict); CameraSpec.from_json_dict
+#                               receives attacker-controlled dict)
+#
+# Each harness runs with a seed corpus committed at tests/fuzz/corpus/<name>/.
+# New corpus entries discovered during a run are ephemeral (not committed).
+# Crashes are written to crashes/<name>-<hash> and cause the job to fail.
+#
+# The fuzz_seconds input controls runtime per harness (default: 600 s).
+# Reduce to 60 for fast smoke runs; increase to 3600+ for overnight campaigns.
+
+name: Fuzz
+
+on:
+  schedule:
+    # Weekly: Sunday 03:00 UTC
+    - cron: "0 3 * * 0"
+  workflow_dispatch:
+    inputs:
+      fuzz_seconds:
+        description: "Seconds to run each harness (default: 600)"
+        required: false
+        default: "600"
+        type: string
+
+permissions: {}
+
+jobs:
+  fuzz:
+    name: "Fuzz — ${{ matrix.harness.name }}"
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    strategy:
+      fail-fast: false   # A crash in one harness must not cancel the others.
+      matrix:
+        harness:
+          - name: manifest
+            script: fuzz_manifest.py
+            corpus: corpus/manifest
+          - name: calibration
+            script: fuzz_calibration.py
+            corpus: corpus/calibration
+          - name: component-instantiate
+            script: fuzz_component_instantiate.py
+            corpus: corpus/component
+          - name: reconfigure-spec
+            script: fuzz_reconfigure_spec.py
+            corpus: corpus/reconfigure
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
+        with:
+          python-version: "3.12"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
+        with:
+          version: "0.8.8"
+
+      - name: Install physicalai and test dependencies
+        # Atheris is Linux-only and not in pyproject.toml; install it
+        # separately into the project virtual environment created by uv sync.
+        run: |
+          uv sync --frozen --extra tests
+          uv pip install atheris
+
+      - name: "Run fuzzer — ${{ matrix.harness.name }}"
+        id: fuzz
+        # '|| true' prevents the step from failing immediately on crash so
+        # the next step can surface the crash file content in the log.
+        run: |
+          mkdir -p crashes
+          uv run python "tests/fuzz/${{ matrix.harness.script }}" \
+            "tests/fuzz/${{ matrix.harness.corpus }}" \
+            -max_total_time="${{ inputs.fuzz_seconds || '600' }}" \
+            -artifact_prefix="crashes/${{ matrix.harness.name }}-" \
+            -print_final_stats=1 \
+            2>&1 || true
+
+      - name: "Check for crashes — ${{ matrix.harness.name }}"
+        # Fail the job if atheris wrote any crash/timeout/oom artifact.
+        # Print the raw bytes (hex) so the finding is visible in the log
+        # without requiring artifact download.
+        run: |
+          shopt -s nullglob
+          crashes=( crashes/${{ matrix.harness.name }}-* )
+          if [[ ${#crashes[@]} -eq 0 ]]; then
+            echo "No crashes found by ${{ matrix.harness.name }} harness."
+            exit 0
+          fi
+
+          echo "::error::${#crashes[@]} crash artifact(s) found — ${{ matrix.harness.name }} harness"
+          for f in "${crashes[@]}"; do
+            echo ""
+            echo "=== Crash: $f ==="
+            echo "--- hex dump (first 64 bytes) ---"
+            xxd "$f" | head -4
+            echo "--- raw (UTF-8, errors replaced) ---"
+            python3 -c "
+          import sys
+          data = open('$f', 'rb').read()
+          print(repr(data[:256]))
+          "
+          done
+          exit 1

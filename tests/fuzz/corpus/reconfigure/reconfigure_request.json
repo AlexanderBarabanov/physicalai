@@ -1,0 +1,1 @@
+{"kind":"RECONFIGURE","spec":{"camera_type":"uvc","camera_kwargs":{"fps":30}}}
