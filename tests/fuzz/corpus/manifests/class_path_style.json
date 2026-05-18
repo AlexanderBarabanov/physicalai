@@ -1,0 +1,1 @@
+{"policy":{"name":"act"},"model":{"runner":{"class_path":"physicalai.inference.runners.SinglePass","init_args":{}}}}

@@ -1,0 +1,1 @@
+{"model":{"runner":{"type":"single_pass","extra_flat_key":"value","numeric_flat_key":42}},"hardware":{"robots":[{"name":"main","type":"so101","state":{"shape":[6],"dtype":"float32"},"action":{"shape":[6],"dtype":"float32"}}]}}

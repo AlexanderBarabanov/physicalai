@@ -49,7 +49,7 @@ jobs:
         harness:
           - name: manifest
             script: fuzz_manifest.py
-            corpus: corpus/manifest
+            corpus: corpus/manifests
           - name: calibration
             script: fuzz_calibration.py
             corpus: corpus/calibration

@@ -17,7 +17,7 @@ TM-010  ``manifest.policy.name`` is used to construct ``model_path``
 
 Running
 -------
-    python tests/fuzz/fuzz_manifest.py tests/fuzz/corpus/manifest \
+    python tests/fuzz/fuzz_manifest.py tests/fuzz/corpus/manifests \
         -max_total_time=600 -artifact_prefix=crashes/manifest-
 
 Crash interpretation

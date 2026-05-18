@@ -1,0 +1,1 @@
+{"model":{"runner":{"class_path":"physicalai.inference.runners.SinglePass","init_args":{"sub":{"class_path":"physicalai.inference.runners.SinglePass","init_args":{"sub2":{"class_path":"physicalai.inference.runners.SinglePass","init_args":{}}}}}}}}
