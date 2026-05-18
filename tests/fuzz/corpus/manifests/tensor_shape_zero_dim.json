@@ -1,0 +1,1 @@
+{"hardware": {"robots": [{"name": "r", "state": {"shape": [0], "dtype": "float32"}}]}, "model": {"runner": {"type": "single_pass"}}}

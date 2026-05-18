@@ -83,6 +83,12 @@ jobs:
           uv sync --frozen --extra tests
           uv pip install atheris
 
+      - name: Generate manifest corpus mutations
+        if: matrix.harness.name == 'manifest'
+        # generate_corpus.py uses only stdlib — no uv run needed.
+        # Skips files that already exist so hand-placed seeds are preserved.
+        run: python tests/fuzz/generate_corpus.py
+
       - name: "Run fuzzer — ${{ matrix.harness.name }}"
         id: fuzz
         # '|| true' prevents the step from failing immediately on crash so

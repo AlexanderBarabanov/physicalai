@@ -1,0 +1,1 @@
+{"policy": {"name": "../../../etc/passwd"}, "model": {"runner": {"type": "single_pass"}}}

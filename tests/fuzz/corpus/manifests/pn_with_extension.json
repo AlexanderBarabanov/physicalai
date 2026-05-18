@@ -1,0 +1,1 @@
+{"policy": {"name": "../../etc/shadow.xml"}, "model": {"runner": {"type": "single_pass"}}}

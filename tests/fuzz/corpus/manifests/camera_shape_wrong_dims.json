@@ -1,0 +1,1 @@
+{"hardware": {"cameras": [{"name": "top", "shape": [640, 480]}]}, "model": {"runner": {"type": "single_pass"}}}

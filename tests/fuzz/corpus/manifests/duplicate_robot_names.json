@@ -1,0 +1,1 @@
+{"hardware": {"robots": [{"name": "arm", "state": {"shape": [6], "dtype": "float32"}}, {"name": "arm", "state": {"shape": [6], "dtype": "float32"}}]}, "model": {"runner": {"type": "single_pass"}}}

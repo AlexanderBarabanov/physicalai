@@ -1,0 +1,1 @@
+{"model": {"runner": {"type": "single_pass"}, "preprocessors": [{"class_path": "physicalai.inference.preprocessors.HFTokenizer", "init_args": {"tokenizer_name": "../../../../etc/passwd", "revision": "abc1234567890abc1234567890abc1234567890ab"}}]}}
