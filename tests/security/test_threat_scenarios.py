@@ -117,6 +117,47 @@ class TestTM001ClassPathAllowlist:
         # Should not raise
         _validate_class_path("physicalai.inference.runners.SinglePass")
 
+    @pytest.mark.security_regression
+    def test_prefix_without_dot_is_rejected(self) -> None:
+        """'physicalai' without the trailing dot separator is rejected.
+
+        The allowlist prefix is ``'physicalai.'`` (with dot).  The bare string
+        ``'physicalai'`` does not start with ``'physicalai.'`` and must be refused
+        to prevent resolving the top-level package itself as a callable.
+        """
+        from physicalai.inference.component_factory import _validate_class_path
+
+        with pytest.raises(ValueError, match="not permitted"):
+            _validate_class_path("physicalai")
+
+    @pytest.mark.security_regression
+    def test_adjacent_namespace_prefix_rejected(self) -> None:
+        """'physicalai_evil.Foo' starts with 'physicalai' but NOT 'physicalai.' — rejected.
+
+        Ensures the prefix check uses the full ``'physicalai.'`` string (with the
+        dot separator) so that a package whose name only *begins* with the token
+        ``physicalai`` cannot slip through.
+        """
+        from physicalai.inference.component_factory import _validate_class_path
+
+        with pytest.raises(ValueError, match="not permitted"):
+            _validate_class_path("physicalai_evil.rce.Payload")
+
+    @pytest.mark.security_regression
+    def test_instantiate_component_enforces_allowlist_end_to_end(self) -> None:
+        """instantiate_component rejects a non-allowlisted class_path before importing it.
+
+        Validates the full call chain:
+        ``instantiate_component`` → ``_import_class`` → ``_validate_class_path``.
+        A stdlib path must never reach ``importlib.import_module``.
+        """
+        from physicalai.inference.component_factory import instantiate_component
+        from physicalai.inference.manifest import ComponentSpec
+
+        spec = ComponentSpec(class_path="os.system", init_args={})
+        with pytest.raises(ValueError, match="not permitted"):
+            instantiate_component(spec)
+
 
 # ===========================================================================
 # TM-002  Plugin auto-execution at import  (UNMITIGATED — consumer responsibility)
@@ -220,6 +261,35 @@ class TestTM003ArtifactPathTraversal:
 
         assert not artifact_path.is_relative_to(export_dir.resolve()), (
             "TM-003 appears fixed: artifact path is now contained within export_dir. "
+            "Update or remove this test after confirming the fix."
+        )
+
+    @pytest.mark.security_poc
+    def test_dotdot_artifact_in_init_args_resolves_outside_export_dir(self, tmp_path: Path) -> None:
+        """PoC: a ../ artifact in init_args (class_path mode) also escapes the export dir.
+
+        ``resolve_artifact()`` has two branches — flat_params and class_path+init_args.
+        Both must apply a boundary check once TM-003 is fixed.  This test targets
+        the init_args branch, which is currently unguarded.
+
+        Expected: PASSES while TM-003 is unmitigated; FAILS once both branches
+        add ``is_relative_to`` checks.
+        """
+        from physicalai.inference.component_factory import resolve_artifact
+        from physicalai.inference.manifest import ComponentSpec
+
+        export_dir = tmp_path / "model_exports"
+        export_dir.mkdir()
+
+        spec = ComponentSpec(
+            class_path="physicalai.inference.runners.SinglePass",
+            init_args={"artifact": "../../sensitive_model.bin"},
+        )
+        resolved = resolve_artifact(spec, export_dir)
+        artifact_path = Path(resolved.init_args["artifact"]).resolve()
+
+        assert not artifact_path.is_relative_to(export_dir.resolve()), (
+            "TM-003 init_args branch appears fixed: artifact is now contained within export_dir. "
             "Update or remove this test after confirming the fix."
         )
 
@@ -380,12 +450,19 @@ class TestTM004FactoryOverride:
         )
         assert result == "shell_executed"
 
-
+    @pytest.mark.security_poc
+    def test_factory_override_call_through_with_safe_callable(
+        self, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
         """When the guard is explicitly enabled, the importlib call is reached.
 
         Confirms the injection mechanism still works end-to-end when opted in —
         meaning the env-var guard is the sole production barrier.
         Uses ``builtins:dict`` (safe, accepts **kwargs) to verify call-through.
+
+        Expected: PASSES while the importlib path remains live behind the guard.
+        A failure here would indicate the injection path has been removed at the
+        library level (which would also make TM-004 no longer applicable).
         """
         import physicalai.capture.transport._publisher_worker as worker_mod
 
@@ -437,6 +514,81 @@ class TestTM004FactoryOverride:
         assert config.get("_factory_override") == "evil:payload", (
             "Injection value was not included in the config dict — "
             "attack path may have been severed in CameraPublisher.start()."
+        )
+
+    @pytest.mark.security_regression
+    def test_truthy_env_var_values_do_not_open_guard(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Only exactly '1' enables the guard — 'true', 'True', 'yes', 'on', '1.0' must not.
+
+        The guard expression is ``os.environ.get(...) == "1"``, so any other truthy
+        string must evaluate to False.  This test enumerates common truthy strings
+        that operators might accidentally set expecting them to work like ``"1"``.
+        """
+        import importlib
+
+        for value in ("true", "True", "yes", "YES", "1.0", "on", "ON", "enabled"):
+            monkeypatch.setenv("PHYSICALAI_TEST_FACTORY_OVERRIDE_ALLOWED", value)
+            import physicalai.capture.transport._publisher_worker as worker_mod
+            importlib.reload(worker_mod)
+
+            assert not worker_mod._FACTORY_OVERRIDE_ALLOWED, (
+                f"_FACTORY_OVERRIDE_ALLOWED was True for env var value {value!r}. "
+                "The guard must only respond to exactly '1'."
+            )
+
+    @pytest.mark.security_regression
+    def test_reconfigure_does_not_forward_factory_override_from_incoming_payload(self) -> None:
+        """RECONFIGURE spec cannot inject _factory_override into build_camera.
+
+        ``_handle_reconfigure`` preserves ``_factory_override`` from the ORIGINAL
+        config only — it must never adopt the value from the incoming request's
+        ``spec`` dict.  An attacker who can send a RECONFIGURE payload must not be
+        able to pivot this into an RCE by injecting ``_factory_override``.
+
+        This test verifies the property holds: even when ``_factory_override`` is
+        present in the attacker's ``spec``, the config passed to ``build_camera``
+        must not contain it (because the original config has no such key).
+        """
+        from physicalai.capture.transport._publisher_worker import _PublisherState, _handle_reconfigure
+
+        mock_camera = MagicMock()
+        mock_camera.disconnect.return_value = None
+
+        # Original config deliberately has NO _factory_override
+        state = _PublisherState(
+            camera=mock_camera,
+            publisher=MagicMock(),
+            camera_fps=30,
+            config={"camera_type": "uvc", "camera_kwargs": {}, "service_name": "test/cam"},
+        )
+
+        # Attacker-controlled RECONFIGURE payload tries to inject _factory_override
+        attacker_request = {
+            "kind": "RECONFIGURE",
+            "spec": {
+                "camera_type": "uvc",
+                "camera_kwargs": {},
+                "_factory_override": "os:system",  # attacker's injection attempt
+            },
+        }
+
+        captured_configs: list[dict] = []
+
+        def capture_build(config: dict):  # noqa: ANN001, ANN202
+            captured_configs.append(config.copy())
+            raise RuntimeError("driver not found — config captured for assertion")
+
+        with patch(
+            "physicalai.capture.transport._publisher_worker.build_camera",
+            side_effect=capture_build,
+        ):
+            _handle_reconfigure(state, attacker_request, "test/cam")
+
+        assert captured_configs, "build_camera was not called — test did not reach the build step"
+        built_config = captured_configs[0]
+        assert "_factory_override" not in built_config, (
+            "_factory_override from the attacker's RECONFIGURE spec reached build_camera. "
+            "This would allow RECONFIGURE to inject an RCE payload regardless of the guard."
         )
 
 
@@ -500,7 +652,6 @@ class TestTM005HFTokenizerNoAllowlist:
         )
         # No secondary check exists that this SHA belongs to an approved repository.
         # Proof: _COMMIT_HASH_RE is the only validation; no allowlist is consulted.
-        source = inspect.getsource(_COMMIT_HASH_RE.__class__)  # just confirm class exists
         from physicalai.inference.preprocessors import hf_tokenizer as hft
         hft_source = inspect.getsource(hft.HFTokenizer.__init__)
         assert "allowlist" not in hft_source.lower() and "allowed_repos" not in hft_source.lower(), (
@@ -677,6 +828,27 @@ class TestTM008CalibrationInvertedRange:
         joint = cal.joints["shoulder_pan"]
         assert joint.range_min == joint.range_max
 
+    @pytest.mark.security_poc
+    def test_negative_range_min_accepted(self) -> None:
+        """PoC: range_min below zero (outside valid servo tick space) is not rejected.
+
+        Servo tick values are unsigned integers; a negative range_min is physically
+        meaningless and can cause sign-inversion or overflow bugs in downstream
+        position calculation, potentially driving joints to undefined positions.
+
+        Expected: PASSES while TM-008 is unmitigated; FAILS once the parser
+        validates that range_min and range_max are non-negative.
+        """
+        from physicalai.robot.so101.calibration import SO101Calibration
+
+        data = _make_calibration_data(range_min=-500, range_max=4095)
+        cal = SO101Calibration.from_dict(data)
+        joint = cal.joints["shoulder_pan"]
+        assert joint.range_min < 0, (
+            "TM-008 extension: negative range_min appears to be rejected. "
+            "Update this test if non-negative validation has been added."
+        )
+
 
 # ===========================================================================
 # TM-009  Manifest recursion depth limit  (MITIGATED)
@@ -750,23 +922,39 @@ class TestTM010PolicyNamePathTraversal:
 
     @pytest.mark.security_poc
     def test_dotdot_policy_name_escapes_export_dir(self, tmp_path: Path) -> None:
-        """PoC: a policy name with ../ resolves outside the export directory.
+        """PoC: _get_model_path() returns a path outside export_dir when policy_name
+        contains a ``../`` traversal sequence.
 
-        Directly replicates the path construction in ``_get_model_path()`` to
-        confirm no boundary check is present.
+        Calls the real ``_get_model_path()`` implementation instead of replicating
+        path construction so the test catches any future refactoring of the method.
+
+        Attack: set ``policy_name = "../sensitive_policy"``; place a matching file
+        one level above ``export_dir`` (still in ``tmp_path`` for test safety);
+        ``_get_model_path()`` resolves and returns the traversal path.
 
         Expected: PASSES while TM-010 is unmitigated.
         """
+        from physicalai.inference.model import InferenceModel
+
         export_dir = tmp_path / "model_exports"
         export_dir.mkdir()
 
-        policy_name = "../../../etc/sensitive_policy"
-        # Replicate what _get_model_path() does (no is_relative_to check):
-        constructed = export_dir / f"{policy_name}.onnx"
-        resolved = constructed.resolve()
+        # Place the traversal target one directory above model_exports (still within
+        # tmp_path so we don't touch real filesystem paths).
+        sensitive_file = tmp_path / "sensitive_policy.onnx"
+        sensitive_file.write_bytes(b"\x00SENSITIVE_CONTENT")
 
-        assert not resolved.is_relative_to(export_dir.resolve()), (
-            "TM-010 appears fixed: resolved path is contained within export_dir. "
+        model = object.__new__(InferenceModel)
+        model.export_dir = export_dir
+        model.policy_name = "../sensitive_policy"  # traversal: resolves outside export_dir
+        model.backend = "onnx"
+
+        with patch("physicalai.inference.model.adapter_registry") as mock_reg:
+            mock_reg.extensions_of.return_value = (".onnx",)
+            result = model._get_model_path()
+
+        assert not result.resolve().is_relative_to(export_dir.resolve()), (
+            "TM-010 appears fixed: _get_model_path() is now confined to export_dir. "
             "Update or remove this test after confirming the fix."
         )
 
