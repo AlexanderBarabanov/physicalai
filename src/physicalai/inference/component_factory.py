@@ -21,6 +21,36 @@ if TYPE_CHECKING:
     from physicalai.inference.manifest import ComponentSpec
 
 
+# Allowlist of permitted class-path prefixes.  Any class_path that does not
+# start with one of these prefixes is rejected before importlib is called.
+# Addresses TM-001 (manifest class_path passthrough to importlib).
+# To allow third-party plugin class paths, register them explicitly via
+# ComponentRegistry.register() and reference them by short name in manifests
+# rather than adding broad prefixes here.
+_ALLOWED_CLASS_PATH_PREFIXES: tuple[str, ...] = ("physicalai.",)
+
+
+def _validate_class_path(class_path: str) -> None:
+    """Raise ValueError if *class_path* does not start with an allowed prefix.
+
+    Args:
+        class_path: Fully-qualified dotted class path to validate.
+
+    Raises:
+        ValueError: If *class_path* does not match any entry in
+            :data:`_ALLOWED_CLASS_PATH_PREFIXES`.
+    """
+    if not any(class_path.startswith(p) for p in _ALLOWED_CLASS_PATH_PREFIXES):
+        allowed = ", ".join(repr(p) for p in _ALLOWED_CLASS_PATH_PREFIXES)
+        msg = (
+            f"class_path {class_path!r} is not permitted; "
+            f"allowed prefixes: {allowed}. "
+            "Register third-party classes via ComponentRegistry.register() "
+            "and reference them by short name in manifests."
+        )
+        raise ValueError(msg)
+
+
 class ComponentRegistry:
     """Name → class_path registry for dynamically instantiated components.
 
@@ -68,10 +98,14 @@ class ComponentRegistry:
 
         Returns:
             The resolved class object.
+
+        Raises:
+            ValueError: If the resolved class path is not in the allowed prefixes.
         """
         class_path = self.resolve(name_or_path)
+        _validate_class_path(class_path)
         module_path, class_name = class_path.rsplit(".", maxsplit=1)
-        module = importlib.import_module(module_path)
+        module = importlib.import_module(module_path)  # nosemgrep: non-literal-import
         return getattr(module, class_name)
 
     def entries(self) -> dict[str, str]:
@@ -154,9 +188,13 @@ def _import_class(class_path: str) -> type:
 
     Returns:
         The imported class object.
+
+    Raises:
+        ValueError: If *class_path* is not in the allowed prefixes.
     """
+    _validate_class_path(class_path)
     module_path, class_name = class_path.rsplit(".", maxsplit=1)
-    module = importlib.import_module(module_path)
+    module = importlib.import_module(module_path)  # nosemgrep: non-literal-import
     return getattr(module, class_name)
 
 

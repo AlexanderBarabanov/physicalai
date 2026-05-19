@@ -166,6 +166,10 @@ class RuntimeAdapterRegistry:
 
         if name in self._lazy:
             module_path = self._lazy[name]
+            # nosemgrep: non-literal-import
+            # module_path is registered exclusively via register_lazy_module()
+            # calls in application code (e.g. "physicalai.inference.adapters.torch");
+            # it is never sourced from user input or manifest content.
             importlib.import_module(module_path)
             if name in self._classes:
                 return self._classes[name]

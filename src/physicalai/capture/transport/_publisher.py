@@ -71,7 +71,10 @@ class CameraPublisher:
         if self._factory_override is not None:
             config["_factory_override"] = self._factory_override
 
-        self._process = subprocess.Popen(
+        # S603: args are fully hardcoded literals; sys.executable is the
+        # current interpreter (not user-supplied); _factory_override is sent
+        # over stdin as JSON, not as a command-line argument.
+        self._process = subprocess.Popen(  # noqa: S603 — hardcoded args, no user input in argv
             [sys.executable, "-m", "physicalai.capture.transport._publisher_worker"],
             stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,

@@ -26,6 +26,13 @@ if TYPE_CHECKING:
 _MAX_CONSECUTIVE_FAILURES = 5
 _CONTROL_MAX_SLICE_LEN = 4096
 
+# TM-004 mitigation: _factory_override triggers arbitrary module import in the
+# worker subprocess (RCE).  The parameter is kept for test injection and is NOT
+# removed from the API.  This flag restricts the code path to processes that
+# have explicitly opted in via the environment variable.  Production deployments
+# must never set PHYSICALAI_TEST_FACTORY_OVERRIDE_ALLOWED.
+_FACTORY_OVERRIDE_ALLOWED: bool = os.environ.get("PHYSICALAI_TEST_FACTORY_OVERRIDE_ALLOWED") == "1"
+
 shutdown = threading.Event()
 
 
@@ -83,15 +90,45 @@ def build_camera(config: dict) -> Camera:
     """Instantiate a camera from a JSON config dict.
 
     Args:
-        config: Configuration dict with camera_type, camera_kwargs, and
-            optional _factory_override.
+        config: Configuration dict with camera_type and camera_kwargs.
+            ``_factory_override`` is a test-only injection key; it is disabled
+            in production processes (see ``PHYSICALAI_TEST_FACTORY_OVERRIDE_ALLOWED``).
 
     Returns:
         Connected camera instance.
     """
     factory_override = config.get("_factory_override")
     if factory_override:
+        # TM-004 mitigation: _factory_override causes this subprocess to import
+        # and call an arbitrary Python module — effectively RCE when reachable
+        # from untrusted input (CVSS 3.1 AV:L/AC:L/PR:L/UI:N/S:C/C:H/I:H/A:H
+        # = 8.8 High if exposed via the Python API; Low in the default
+        # SharedCamera path which does not forward the parameter).
+        #
+        # The parameter is intentionally kept for test dependency injection and
+        # is NOT removed from the API.  The guard below is the library-side
+        # mitigation: the import path is dead unless the process has explicitly
+        # opted in by setting PHYSICALAI_TEST_FACTORY_OVERRIDE_ALLOWED=1.
+        # Production processes must never set that variable.
+        #
+        # The IPC reconfigure channel does not expose this parameter: see
+        # _handle_reconfigure(), which preserves but never accepts it from
+        # incoming payloads.
+        #
+        # Consumer responsibility (see threat model §8.3): use SharedCamera
+        # only in production; never forward camera kwargs from external callers
+        # to CameraPublisher; strip _factory_override at every external-input
+        # boundary: camera_kwargs.pop("_factory_override", None).
+        if not _FACTORY_OVERRIDE_ALLOWED:
+            msg = (
+                "_factory_override is a test-only injection parameter and is "
+                "disabled in this process. Set "
+                "PHYSICALAI_TEST_FACTORY_OVERRIDE_ALLOWED=1 to enable it "
+                "(never in production). See TM-004."
+            )
+            raise RuntimeError(msg)
         module_path, _, attr = factory_override.rpartition(":")
+        # nosemgrep: non-literal-import
         mod = importlib.import_module(module_path)
         factory = getattr(mod, attr)
         return factory(**config.get("camera_kwargs", {}))
