@@ -187,6 +187,8 @@ markers = [
     "integration: marks tests as integration tests",
     "v4l2: marks tests requiring V4L2 mocking (Linux only)",
     "transport: marks tests requiring iceoryx2",
+    "security_regression: mitigation is in place — test must always pass; failure = regression",
+    "security_poc: threat is unmitigated — test passes while vulnerable, fails once fixed",
 ]
 
 [tool.coverage.report]

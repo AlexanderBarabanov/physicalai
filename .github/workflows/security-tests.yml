@@ -1,0 +1,105 @@
+name: Security Tests
+
+# Runs threat-model regression and exploit-proof-of-concept tests.
+#
+# Two jobs:
+#   security-regression  — verifies that all mitigated threats remain blocked.
+#                          Blocks PR merge on failure.
+#   security-poc         — asserts that unmitigated threats are still exploitable.
+#                          Informational: does NOT block merge, but results are
+#                          uploaded as an artifact for review.  A test *failure*
+#                          in this job means a vulnerability has been fixed —
+#                          retire or update the PoC test and confirm the fix.
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  security-regression:
+    name: Security regression (mitigated threats)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
+        with:
+          python-version: "3.12"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
+        with:
+          version: "0.8.8"
+
+      - name: Install dependencies
+        run: uv sync --frozen --extra tests --extra robots
+
+      # Explicitly confirm the test-injection guard env var is absent.
+      # Production CI must never set PHYSICALAI_TEST_FACTORY_OVERRIDE_ALLOWED. (TM-004)
+      - name: Verify test injection guard env var is absent
+        run: |
+          if [ -n "${PHYSICALAI_TEST_FACTORY_OVERRIDE_ALLOWED:-}" ]; then
+            echo "ERROR: PHYSICALAI_TEST_FACTORY_OVERRIDE_ALLOWED is set in CI environment."
+            echo "This variable must never be set outside of explicit test steps. (TM-004)"
+            exit 1
+          fi
+
+      - name: Run security regression tests
+        run: uv run pytest tests/security -m security_regression -v --tb=short
+
+  security-poc:
+    name: Security PoC (unmitigated vulnerabilities — informational)
+    runs-on: ubuntu-latest
+    # Does not block PR merge; outputs results for security review
+    continue-on-error: true
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
+        with:
+          python-version: "3.12"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
+        with:
+          version: "0.8.8"
+
+      - name: Install dependencies
+        run: uv sync --frozen --extra tests --extra robots
+
+      - name: Run security PoC tests (open vulnerabilities)
+        # A test FAILURE here means a vulnerability has been fixed.
+        # Review the failure, confirm the fix is complete, and retire or update
+        # the corresponding PoC test.
+        run: |
+          uv run pytest tests/security -m security_poc -v --tb=short \
+            --junitxml=security-poc-results.xml \
+            2>&1 | tee security-poc-output.txt
+          exit 0  # never fail the job; failures are informational
+
+      - name: Upload PoC test results
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: security-poc-results
+          path: |
+            security-poc-results.xml
+            security-poc-output.txt
+          retention-days: 30
