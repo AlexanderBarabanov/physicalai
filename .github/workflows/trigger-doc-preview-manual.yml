@@ -1,0 +1,91 @@
+name: Trigger Documentation Preview (Manual)
+
+# Manual workflow for deploying documentation previews
+
+on:
+  workflow_dispatch:
+    inputs:
+      pr:
+        description: 'PR number'
+        required: true
+        type: number
+      commit_sha:
+        description: 'Full trusted commit SHA'
+        required: true
+        type: string
+
+permissions: {} # No permissions by default on workflow level
+
+jobs:
+  manual-preview:
+    name: Manual dispatch preview build
+    runs-on: ubuntu-latest
+    environment:
+      name: preview-doc
+      deployment: false
+    steps:
+      - name: Verify PR HEAD SHA
+        env:
+          PROVIDED_SHA: ${{ inputs.commit_sha }}
+          PR_NUMBER: ${{ inputs.pr }}
+          GH_TOKEN: ${{ github.token }}
+        run: |         
+          # Fetch current HEAD SHA from the PR
+          CURRENT_HEAD_SHA=$(gh pr view $PR_NUMBER --repo ${{ github.repository }} --json headRefOid --jq '.headRefOid')
+          
+          echo "Provided SHA: $PROVIDED_SHA"
+          echo "Current HEAD: $CURRENT_HEAD_SHA"
+          
+          # Verify SHA hasn't changed
+          if [[ "$CURRENT_HEAD_SHA" == "$PROVIDED_SHA" ]]; then
+            echo "SHA verification passed"
+          else
+            echo "SHA mismatch - potential TOCTOU race condition detected!"
+            echo "Expected: $PROVIDED_SHA"
+            echo "Actual:   $CURRENT_HEAD_SHA"
+            echo ""
+            echo "This means the PR was updated after you retrieved the SHA."
+            echo "Please verify the new commit and re-run with the updated SHA."
+            exit 1
+          fi
+
+      - name: Get PR branch name
+        id: pr-branch
+        env:
+          PR_NUMBER: ${{ inputs.pr }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # Fetch PR head branch name (required by hub)
+          HEAD_REF=$(gh pr view $PR_NUMBER --repo ${{ github.repository }} --json headRefName --jq '.headRefName')
+          echo "head_ref=$HEAD_REF" >> $GITHUB_OUTPUT
+
+      - name: Generate GitHub App token
+        id: generate-token
+        uses: actions/create-github-app-token@f8d387b68d61c58ab83c6c016672934102569859 # v3.0.0
+        with:
+          app-id: ${{ secrets.DOC_HUB_APP_ID }}
+          private-key: ${{ secrets.DOC_HUB_APP_PRIVATE_KEY }}
+          owner: AlexanderBarabanov
+          repositories: edge-manage-docs
+
+      - name: Dispatch deploy-preview (manual mode)
+        env:
+          GH_TOKEN: ${{ steps.generate-token.outputs.token }}
+          DOC_HUB_REPO: ${{ secrets.DOC_HUB_REPO }}
+          SOURCE_REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ inputs.pr }}
+          BRANCH: ${{ steps.pr-branch.outputs.head_ref }}
+          COMMIT_SHA: ${{ inputs.commit_sha }}
+        run: |
+          gh api \
+            --method POST \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            repos/$DOC_HUB_REPO/dispatches \
+            -f event_type='deploy-preview' \
+            -f client_payload[source_repo]="$SOURCE_REPO" \
+            -f client_payload[pr_number]="$PR_NUMBER" \
+            -f client_payload[branch]="$BRANCH" \
+            -f client_payload[commit_sha]="$COMMIT_SHA" \
+            --silent
+          echo "✅ Manual preview deployment triggered for PR #$PR_NUMBER @ $COMMIT_SHA"
