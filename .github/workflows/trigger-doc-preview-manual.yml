@@ -6,11 +6,11 @@ on:
   workflow_dispatch:
     inputs:
       pr:
-        description: 'PR number'
+        description: "PR number"
         required: true
         type: number
       commit_sha:
-        description: 'Full trusted commit SHA'
+        description: "Full trusted commit SHA"
         required: true
         type: string
 
@@ -29,13 +29,13 @@ jobs:
           PROVIDED_SHA: ${{ inputs.commit_sha }}
           PR_NUMBER: ${{ inputs.pr }}
           GH_TOKEN: ${{ github.token }}
-        run: |         
+        run: |
           # Fetch current HEAD SHA from the PR
           CURRENT_HEAD_SHA=$(gh pr view $PR_NUMBER --repo ${{ github.repository }} --json headRefOid --jq '.headRefOid')
-          
+
           echo "Provided SHA: $PROVIDED_SHA"
           echo "Current HEAD: $CURRENT_HEAD_SHA"
-          
+
           # Verify SHA hasn't changed
           if [[ "$CURRENT_HEAD_SHA" == "$PROVIDED_SHA" ]]; then
             echo "SHA verification passed"
