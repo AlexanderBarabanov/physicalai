@@ -3,6 +3,7 @@ import styles from "./Section.module.css";
 
 type SectionBaseProps = {
   children: ReactNode;
+  className?: string;
 };
 
 type SectionPartProps = {
@@ -31,9 +32,9 @@ SectionIcon.displayName = "Section.Icon";
 SectionTitle.displayName = "Section.Title";
 SectionDescription.displayName = "Section.Description";
 
-const SectionRoot = ({ children }: SectionBaseProps) => {
+const SectionRoot = ({ children, className }: SectionBaseProps) => {
   return (
-    <section className={styles.container}>
+    <section className={`${styles.container} ${className}`}>
       <div>{children}</div>
     </section>
   );

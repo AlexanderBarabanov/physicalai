@@ -1,0 +1,42 @@
+.container {
+  background:
+    radial-gradient(
+      circle at 75% 20%,
+      rgba(132, 0, 255, 0.22) 0%,
+      transparent 45%
+    ),
+    linear-gradient(
+      90deg,
+      #0d6e91 0%,
+      #0f4fa7 25%,
+      #2027b8 50%,
+      #4b0fc7 75%,
+      #2d197f 100%
+    );
+}
+
+.title {
+  font-weight: 500;
+  font-size: 48px;
+  line-height: 48px;
+}
+
+.description,
+.list {
+  font-weight: 400;
+  font-size: 14px;
+  line-height: 20px;
+  letter-spacing: 0.25px;
+  margin-top: 24px;
+}
+
+.cardsContainer {
+  gap: 24px;
+  display: flex;
+  margin-top: 24px;
+  align-items: stretch;
+
+  & > * {
+    flex: 1 1 0;
+  }
+}
