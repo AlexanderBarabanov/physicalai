@@ -5,6 +5,10 @@ import { DottedCard } from "../../_components/DottedCard/DottedCardDetails";
 import { PythonCode } from "../../_components/PythonCode/PythonCode";
 import { Section } from "../../_components/Section/Section";
 import continuousLoopImg from "../../img/continuous-loop.png";
+import realTimeIa from "../../img/real-time-ai.png";
+import physicalHardware from "../../img/physical-hardware.png";
+import physicalBehavior from "../../img/physical-behavior.png";
+import modelServing from "../../img/model-serving.png";
 import styles from "./HeroSection.module.css";
 
 export const HeroSection = () => {
@@ -23,25 +27,25 @@ export const HeroSection = () => {
 
       <div className={styles.cardsContainer}>
         <CardDetails
-          iconUrl={""}
+          iconUrl={realTimeIa}
           title="Real-Time AI Execution"
           description="The framework enables reliable, real-time execution of AI policies on physical systems such as robots and edge devices."
         />
 
         <CardDetails
-          iconUrl={""}
+          iconUrl={physicalHardware}
           title="Integration with Physical Hardware"
           description="It combines sync, async or remote execution and direct hardware integration into a unified platform for stable AI operation."
         />
 
         <CardDetails
-          iconUrl={""}
+          iconUrl={physicalBehavior}
           title="Dependable Physical Behavior"
           description="Physical AI emphasizes dependable behavior in dynamic environments, prioritizing timing, coordination, and safety over just prediction accuracy."
         />
 
         <CardDetails
-          iconUrl={""}
+          iconUrl={modelServing}
           title="Beyond Model Serving"
           description="The framework serves as a runtime layer enabling AI deployment beyond labs into real-world production environments."
         />
@@ -76,7 +80,7 @@ export const HeroSection = () => {
           </DottedCard>
 
           <div className={styles.continuousLoop}>
-            <img src={continuousLoopImg} alt="Description of image" />
+            <img src={continuousLoopImg} alt="Continuous Loop" />
           </div>
         </div>
       </div>

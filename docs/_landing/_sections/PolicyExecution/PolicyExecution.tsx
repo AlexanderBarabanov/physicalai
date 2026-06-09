@@ -17,7 +17,7 @@ export const PolicyExecution = () => (
       <li>Built for environments where timing and coordination matter</li>
     </ul>
 
-    <p className={styles.title}>Why it matters</p>
+    <h2 className={styles.title}>Why it matters</h2>
 
     <div className={styles.cardsContainer}>
       <PolicyCard

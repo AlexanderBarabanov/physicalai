@@ -94,7 +94,8 @@ export const KeyCapabilities = () => {
           title="Built-in Evaluation & Benchmarking"
           codeSnippet={`
             metrics = benchmark.run(policy, dataset)
-            print(metrics["latency"], metrics["success_rate`}
+            print(metrics["latency"], metrics["success_rate"])
+          `}
           description={
             <>
               Measure performance of real-world execution:

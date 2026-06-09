@@ -2,7 +2,7 @@ import { ReactNode } from "react";
 import styles from "./CardDetails.module.css";
 
 type CardDetailsProps = {
-  title: ReactNode;
+  title: string;
   iconUrl: string;
   maxIconWidth?: string | number;
   description: string;
@@ -16,7 +16,7 @@ export const CardDetails = ({
 }: CardDetailsProps) => {
   return (
     <div className={styles.container}>
-      <img style={{ maxWidth: maxIconWidth }} src={iconUrl} />
+      <img style={{ maxWidth: maxIconWidth }} src={iconUrl} alt={title} />
 
       <h3 className={styles.title}>{title}</h3>
       <div className={styles.description}>{description}</div>

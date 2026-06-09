@@ -6,7 +6,7 @@ import { PolicyExecution } from "./_sections/PolicyExecution/PolicyExecution";
 
 export default function Home() {
   return (
-    <Layout description="Physical AI Framework is a production-ready runtime that executes AI policies on physical systems ">
+    <Layout description="Physical AI Framework is a production-ready runtime that executes AI policies on physical systems">
       <HeroSection />
       <PolicyExecution />
       <KeyCapabilities />
