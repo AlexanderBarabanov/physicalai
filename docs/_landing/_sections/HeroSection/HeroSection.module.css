@@ -1,0 +1,76 @@
+.title {
+  font-size: 72px;
+  line-height: 72px;
+  font-weight: 500;
+  vertical-align: middle;
+}
+
+.gradientTitle {
+  background: linear-gradient(
+    101.29deg,
+    #91ffed 0.16%,
+    #3094ff 36.93%,
+    #b57cff 73.71%
+  );
+  z-index: 1;
+  color: transparent;
+  position: relative;
+  background-clip: text;
+  -webkit-background-clip: text;
+}
+
+.description {
+  font-size: 20px;
+  max-width: 790px;
+  margin-top: 48px;
+  line-height: 28px;
+  font-weight: 400;
+}
+
+.cardsContainer {
+  gap: 24px;
+  display: grid;
+  margin-top: 48px;
+  align-items: stretch;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.installContainer {
+  margin-top: 100px;
+
+  h3 {
+    font-weight: 500;
+    font-size: 48px;
+    line-height: 48px;
+  }
+
+  h4 {
+    font-size: 14px;
+    margin-top: 8px;
+    font-weight: 400;
+    line-height: 20px;
+  }
+}
+
+.installCards {
+  gap: 24px;
+  display: flex;
+  margin-top: 24px;
+  flex-direction: row;
+
+  & > div:first-child {
+    flex: 1;
+  }
+
+  p {
+    font-size: 14px;
+    font-weight: 500;
+  }
+}
+
+.continuousLoop {
+  display: flex;
+  align-items: center;
+  background: #000e2ede;
+  border: 1px solid #ffffff0d;
+}

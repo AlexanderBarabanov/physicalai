@@ -1,0 +1,8 @@
+.codeContainer {
+  height: auto;
+  border: none;
+
+  &::before {
+    display: none;
+  }
+}
