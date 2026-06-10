@@ -1,0 +1,17 @@
+.title {
+  font-weight: 500;
+  font-size: 36px;
+  line-height: 40px;
+}
+
+.description {
+  font-weight: 400;
+  font-size: 14px;
+  line-height: 20px;
+  letter-spacing: 0.25px;
+
+  ul {
+    margin-top: 10px;
+    margin-bottom: 10px;
+  }
+}
