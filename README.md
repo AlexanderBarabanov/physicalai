@@ -40,6 +40,9 @@ pip install physicalai
 With hardware-specific extras:
 
 ```bash
++++
+
+
 pip install physicalai[realsense]   # Intel RealSense cameras
 pip install physicalai[basler]      # Basler industrial cameras
 pip install physicalai[so101]       # SO-101 robot arm
