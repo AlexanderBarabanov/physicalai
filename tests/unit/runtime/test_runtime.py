@@ -8,6 +8,7 @@ from __future__ import annotations
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
 from unittest.mock import MagicMock, patch
 
@@ -17,6 +18,9 @@ import pytest
 from physicalai.runtime._action_queue import ChunkedActionQueue as ActionQueue, ChunkedActionQueue
 from physicalai.runtime.execution import SyncExecution, WorkerDiedError
 from physicalai.runtime.runtime import PolicyRuntime, RunStats
+from physicalai.robot.interface import RobotObservation
+from physicalai.inference.model import InferenceModel
+from physicalai.inference.constants import IMAGES, STATE, TASK
 
 from physicalai.capture import Frame
 
@@ -295,3 +299,237 @@ class TestRunStats:
         assert stats.total_pops == 8
         assert stats.total_holds == 2
         assert stats.inference_count == 3
+
+
+class _ConfigFakeRobot:
+    """Minimal Robot-protocol stub usable as a YAML ``class_path`` target."""
+
+    def __init__(self, port: str = "/dev/null") -> None:
+        self.port = port
+
+    @property
+    def joint_names(self) -> list[str]:
+        return ["j0", "j1"]
+
+    def connect(self) -> None: ...
+    def disconnect(self) -> None: ...
+    def is_connected(self) -> bool:
+        return True
+
+    def get_observation(self) -> RobotObservation:
+        return FakeRobotObservation(
+            joint_positions=np.zeros(2, dtype=np.float32),
+            timestamp=time.monotonic(),
+            sensor_data=None,
+            images=None,
+        )
+
+    def send_action(self, action: np.ndarray, *, goal_time: float = 0.1) -> None: ...
+
+
+class _ConfigFakeModel(InferenceModel):
+    """Minimal InferenceModel subclass that skips export-dir filesystem access."""
+
+    def __init__(self, export_dir: str = "/tmp/fake") -> None:  # noqa: S108
+        self.export_dir = export_dir  # type: ignore[assignment]
+
+
+_FAKE_ROBOT_PATH = f"{__name__}._ConfigFakeRobot"
+_SYNC_EXECUTION_PATH = "physicalai.runtime.execution.SyncExecution"
+_MODEL_PATH = f"{__name__}._ConfigFakeModel"
+
+
+def _minimal_yaml(*, fps: float = 30.0, include_run_block: bool = False) -> str:
+    body = (
+        "runtime:\n"
+        f"  fps: {fps}\n"
+        "  robot:\n"
+        f"    class_path: {_FAKE_ROBOT_PATH}\n"
+        "    init_args:\n"
+        "      port: /dev/null\n"
+        "  model:\n"
+        f"    class_path: {_MODEL_PATH}\n"
+        "    init_args:\n"
+        "      export_dir: /tmp/fake\n"
+        "  execution:\n"
+        f"    class_path: {_SYNC_EXECUTION_PATH}\n"
+    )
+    if include_run_block:
+        body += "run:\n  duration_s: 5\n"
+    return body
+
+
+class TestFromConfig:
+    """``PolicyRuntime.from_config`` — YAML/JSON loader symmetric to the CLI."""
+
+    def test_loads_minimal_yaml(self, tmp_path: Path) -> None:
+        cfg_path = tmp_path / "runtime.yaml"
+        cfg_path.write_text(_minimal_yaml())
+
+        runtime = PolicyRuntime.from_config(cfg_path)
+
+        assert isinstance(runtime, PolicyRuntime)
+        assert runtime._fps == 30.0  # noqa: SLF001
+        assert isinstance(runtime.robot, _ConfigFakeRobot)
+        assert runtime.robot.port == "/dev/null"
+
+    def test_accepts_string_path(self, tmp_path: Path) -> None:
+        cfg_path = tmp_path / "runtime.yaml"
+        cfg_path.write_text(_minimal_yaml(fps=15.0))
+
+        runtime = PolicyRuntime.from_config(str(cfg_path))
+
+        assert runtime._fps == 15.0  # noqa: SLF001
+
+    def test_ignores_run_block(self, tmp_path: Path) -> None:
+        """The CLI's ``run:`` block parses but is dropped — caller passes duration to run()."""
+        cfg_path = tmp_path / "runtime.yaml"
+        cfg_path.write_text(_minimal_yaml(include_run_block=True))
+
+        runtime = PolicyRuntime.from_config(cfg_path)
+
+        assert isinstance(runtime, PolicyRuntime)
+        # Runtime carries no record of run.duration_s; only its constructor args.
+        assert not hasattr(runtime, "duration_s")
+
+    def test_missing_required_field_raises(self, tmp_path: Path) -> None:
+        cfg_path = tmp_path / "runtime.yaml"
+        # No model block — schema must reject.
+        cfg_path.write_text(
+            "runtime:\n"
+            "  fps: 30\n"
+            "  robot:\n"
+            f"    class_path: {_FAKE_ROBOT_PATH}\n"
+            "  execution:\n"
+            f"    class_path: {_SYNC_EXECUTION_PATH}\n",
+        )
+        with pytest.raises(SystemExit):
+            PolicyRuntime.from_config(cfg_path)
+
+    def test_returns_disconnected_runtime(self, tmp_path: Path) -> None:
+        cfg_path = tmp_path / "runtime.yaml"
+        cfg_path.write_text(_minimal_yaml())
+
+        runtime = PolicyRuntime.from_config(cfg_path)
+
+        assert runtime._connected is False  # noqa: SLF001
+
+
+def _make_frame(value: int = 0) -> Frame:
+    return Frame(data=np.full((2, 2, 3), value, dtype=np.uint8), timestamp=0.0, sequence=0)
+
+
+class TestBuildModelInputFrom:
+    """Covers image-key layout in PolicyRuntime._build_model_input_from."""
+
+    @staticmethod
+    def _runtime(**kwargs: Any) -> PolicyRuntime:
+        defaults: dict[str, Any] = {
+            "robot": _make_mock_robot(),
+            "model": _make_mock_model(),
+            "execution": SyncExecution(),
+            "fps": 10.0,
+        }
+        defaults.update(kwargs)
+        return _make_runtime(**defaults)
+
+    def test_single_image_uses_bare_images_key(self) -> None:
+        """A single image input is placed under the bare ``images`` key."""
+        robot_obs = FakeRobotObservation(
+            joint_positions=np.array([0.1, 0.2, 0.3], dtype=np.float32),
+            timestamp=0.0,
+            sensor_data=None,
+            images=None,
+        )
+        frame = _make_frame(1)
+        runtime = self._runtime(cameras={"cam0": MagicMock()})
+
+        model_input = runtime._build_model_input_from(robot_obs, {"cam0": frame})  # noqa: SLF001
+
+        assert IMAGES in model_input
+        assert f"{IMAGES}.cam0" not in model_input
+        np.testing.assert_array_equal(model_input[IMAGES], frame.data[np.newaxis])
+        np.testing.assert_array_equal(model_input[STATE], np.array([robot_obs.state], dtype=np.float32))
+
+    def test_multiple_images_use_namespaced_keys(self) -> None:
+        """Multiple image inputs are placed under ``images.<name>`` keys."""
+        robot_obs = FakeRobotObservation(
+            joint_positions=np.array([0.1, 0.2, 0.3], dtype=np.float32),
+            timestamp=0.0,
+            sensor_data=None,
+            images=None,
+        )
+        frame0 = _make_frame(1)
+        frame1 = _make_frame(2)
+        runtime = self._runtime()
+
+        model_input = runtime._build_model_input_from(  # noqa: SLF001
+            robot_obs, {"cam0": frame0, "cam1": frame1}
+        )
+
+        assert IMAGES not in model_input
+        np.testing.assert_array_equal(model_input[f"{IMAGES}.cam0"], frame0.data[np.newaxis])
+        np.testing.assert_array_equal(model_input[f"{IMAGES}.cam1"], frame1.data[np.newaxis])
+
+    def test_single_robot_embedded_image_uses_bare_images_key(self) -> None:
+        """A single robot-embedded image also uses the bare ``images`` key."""
+        frame = _make_frame(3)
+        robot_obs = FakeRobotObservation(
+            joint_positions=np.array([0.1, 0.2, 0.3], dtype=np.float32),
+            timestamp=0.0,
+            sensor_data=None,
+            images={"wrist": frame},
+        )
+        runtime = self._runtime()
+
+        model_input = runtime._build_model_input_from(robot_obs, {})  # noqa: SLF001
+
+        assert IMAGES in model_input
+        np.testing.assert_array_equal(model_input[IMAGES], frame.data[np.newaxis])
+
+    def test_robot_and_camera_images_combine_to_namespaced_keys(self) -> None:
+        """A robot-embedded image plus a camera frame yield namespaced keys."""
+        embedded = _make_frame(4)
+        camera = _make_frame(5)
+        robot_obs = FakeRobotObservation(
+            joint_positions=np.array([0.1, 0.2, 0.3], dtype=np.float32),
+            timestamp=0.0,
+            sensor_data=None,
+            images={"wrist": embedded},
+        )
+        runtime = self._runtime()
+
+        model_input = runtime._build_model_input_from(robot_obs, {"cam0": camera})  # noqa: SLF001
+
+        assert IMAGES not in model_input
+        np.testing.assert_array_equal(model_input[f"{IMAGES}.wrist"], embedded.data[np.newaxis])
+        np.testing.assert_array_equal(model_input[f"{IMAGES}.cam0"], camera.data[np.newaxis])
+
+    def test_no_images_omits_image_keys(self) -> None:
+        """With no images, no ``images`` keys are present."""
+        robot_obs = FakeRobotObservation(
+            joint_positions=np.array([0.1, 0.2, 0.3], dtype=np.float32),
+            timestamp=0.0,
+            sensor_data=None,
+            images=None,
+        )
+        runtime = self._runtime()
+
+        model_input = runtime._build_model_input_from(robot_obs, {})  # noqa: SLF001
+
+        assert IMAGES not in model_input
+        assert not any(key.startswith(f"{IMAGES}.") for key in model_input)
+
+    def test_task_included_when_set(self) -> None:
+        """The task string is forwarded when configured on the runtime."""
+        robot_obs = FakeRobotObservation(
+            joint_positions=np.array([0.1, 0.2, 0.3], dtype=np.float32),
+            timestamp=0.0,
+            sensor_data=None,
+            images=None,
+        )
+        runtime = self._runtime(task="pick the cube")
+
+        model_input = runtime._build_model_input_from(robot_obs, {"cam0": _make_frame(1)})  # noqa: SLF001
+
+        assert model_input[TASK] == ["pick the cube"]

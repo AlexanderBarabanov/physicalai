@@ -14,6 +14,7 @@ from typing import TYPE_CHECKING, Any, Protocol, Self, runtime_checkable
 import numpy as np
 
 from physicalai.capture.errors import CaptureError
+from physicalai.inference.constants import IMAGES, STATE, TASK
 from physicalai.runtime._action_queue import ChunkedActionQueue  # noqa: PLC2701
 from physicalai.runtime._callback_bus import _CallbackBus  # noqa: PLC2701
 from physicalai.runtime.events import LifecycleEvent, TickEvent
@@ -22,6 +23,7 @@ from physicalai.runtime.smoothers import LerpSmoother
 
 if TYPE_CHECKING:
     from collections.abc import Mapping, Sequence
+    from pathlib import Path
 
     from physicalai.capture.camera import Camera
     from physicalai.capture.frame import Frame
@@ -276,6 +278,37 @@ class PolicyRuntime:
     def __exit__(self, *exc_info: object) -> None:  # noqa: D105
         self.disconnect()
 
+    @classmethod
+    def from_config(cls, config: str | Path) -> Self:
+        """Build a :class:`PolicyRuntime` from a YAML/JSON config file.
+
+        Uses the same schema as ``physicalai run --config``. The optional
+        top-level ``run:`` block is parsed but ignored — pass ``duration_s``
+        to :meth:`run` directly.
+
+        Args:
+            config: Path to a YAML or JSON config file.
+
+        Returns:
+            Instantiated runtime, not yet connected. Call ``connect()`` or
+            use as a context manager before invoking ``run()``.
+
+        Example::
+
+            with PolicyRuntime.from_config("rtc_runtime.yaml") as runtime:
+                runtime.run(duration_s=60)
+        """
+        from jsonargparse import ActionConfigFile, ArgumentParser  # noqa: PLC0415
+
+        parser = ArgumentParser()
+        parser.add_argument("--config", action=ActionConfigFile)
+        parser.add_class_arguments(cls, "runtime")
+        # Accept (and ignore) the CLI's ``run:`` block so configs round-trip
+        # between ``physicalai run --config`` and ``from_config``.
+        parser.add_method_arguments(cls, "run", "run")
+        ns = parser.parse_args(["--config", str(config)])
+        return parser.instantiate(ns).runtime
+
     def run(self, *, duration_s: float | None = None) -> RunStats:  # noqa: PLR0915
         """Run the control loop.
 
@@ -420,18 +453,33 @@ class PolicyRuntime:
 
     def _build_model_input(self) -> dict[str, Any]:
         robot_obs = self._robot.get_observation()
-        model_input: dict[str, Any] = {"state": np.array([robot_obs.state], dtype=np.float32)}
+        camera_frames = {name: cam.read_latest() for name, cam in self._cameras.items()}
 
+        return self._build_model_input_from(robot_obs, camera_frames)
+
+    def _build_model_input_from(self, robot_obs: RobotObservation, camera_frames: dict[str, Frame]) -> dict[str, Any]:
+        """Assemble model input dict from observation and camera frames.
+
+        Returns:
+            Dictionary ready to pass to the inference model.
+        """
+        model_input: dict[str, Any] = {STATE: np.array([robot_obs.state], dtype=np.float32)}
+        image_inputs: dict[str, np.ndarray] = {}
         # Merge robot-embedded images and external cameras
         if robot_obs.images:
             for name, frame in robot_obs.images.items():
-                model_input[f"images.{name}"] = frame.data[np.newaxis]
-        for name, cam in self._cameras.items():
-            model_input[f"images.{name}"] = cam.read_latest().data[np.newaxis]
+                image_inputs[name] = frame.data[np.newaxis]
+        for name, frame in camera_frames.items():
+            image_inputs[name] = frame.data[np.newaxis]
+
+        if len(image_inputs) > 1:
+            for name, data in image_inputs.items():
+                model_input[f"{IMAGES}.{name}"] = data
+        elif len(image_inputs) == 1:
+            model_input[IMAGES] = next(iter(image_inputs.values()))
 
         if self._task is not None:
-            model_input["task"] = [self._task]
-
+            model_input[TASK] = [self._task]
         return model_input
 
     def _retry_robot_obs(self) -> tuple[RobotObservation | None, ConnectionError | OSError | None]:
@@ -519,22 +567,6 @@ class PolicyRuntime:
                 camera_frames[name] = stale_frame
 
         return robot_obs, camera_frames
-
-    def _build_model_input_from(self, robot_obs: RobotObservation, camera_frames: dict[str, Frame]) -> dict[str, Any]:
-        """Assemble model input dict from observation and camera frames.
-
-        Returns:
-            Dictionary ready to pass to the inference model.
-        """
-        model_input: dict[str, Any] = {"state": np.array([robot_obs.state], dtype=np.float32)}
-        if robot_obs.images:
-            for name, frame in robot_obs.images.items():
-                model_input[f"images.{name}"] = frame.data[np.newaxis]
-        for name, frame in camera_frames.items():
-            model_input[f"images.{name}"] = frame.data[np.newaxis]
-        if self._task is not None:
-            model_input["task"] = [self._task]
-        return model_input
 
     def _resilient_send(self, action: np.ndarray) -> None:
         last_error: ConnectionError | OSError | None = None
