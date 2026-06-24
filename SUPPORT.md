@@ -14,6 +14,7 @@ Please check the following first:
 - Bug reports: open a bug report issue with a minimal reproduction
 - Feature ideas: open a feature request issue with the problem and proposed solution
 - Usage questions: open a usage question issue and include environment details and logs
+- test
 
 ## Security issues
 
