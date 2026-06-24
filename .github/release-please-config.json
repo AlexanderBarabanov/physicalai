@@ -20,7 +20,7 @@
   ],
   "packages": {
     ".": {
-      "release-type": "python",
+      "release-type": "simple",
       "package-name": "physicalai",
       "changelog-path": "CHANGELOG.md"
     }
