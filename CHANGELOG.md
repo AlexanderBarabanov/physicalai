@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.3.1](https://github.com/AlexanderBarabanov/physicalai/compare/v0.3.0...v0.3.1) (2026-06-24)
+
+
+### 📚 Documentation
+
+* Update test_action_queue.py ([e09bb12](https://github.com/AlexanderBarabanov/physicalai/commit/e09bb121f140447580a31b1563fb7d1e6382e9f6))
+
+
+### 🔧 Chores
+
+* Update smoothers.py ([ce3297f](https://github.com/AlexanderBarabanov/physicalai/commit/ce3297fc7da80aee2889d458374fe86b8df247db))
+
 ## [0.3.0](https://github.com/AlexanderBarabanov/physicalai/compare/v0.2.0...v0.3.0) (2026-06-24)
 
 
