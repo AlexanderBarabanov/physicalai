@@ -1,4 +1,4 @@
-import openVinoIr from "../../../img/openvino-ir.png";
+import openVinoIr from "../../../img/openvinoIr.png";
 import styles from "./KeyHighlights.module.css";
 
 export const KeyHighlights = () => {
