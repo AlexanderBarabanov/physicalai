@@ -1,4 +1,3 @@
-import { ReactNode } from "react";
 import styles from "./CardDetails.module.css";
 
 type CardDetailsProps = {

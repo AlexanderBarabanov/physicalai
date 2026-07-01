@@ -1,6 +1,7 @@
 .codeContainer {
   height: auto;
   border: none;
+  margin-top: 24px;
 
   &::before {
     display: none;

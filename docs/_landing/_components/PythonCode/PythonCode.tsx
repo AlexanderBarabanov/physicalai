@@ -4,6 +4,7 @@ import styles from "./PythonCode.module.css";
 type PythonCodeProps = {
   code: string;
 };
+
 export const PythonCode = ({ code }: PythonCodeProps) => {
   return (
     <Code
