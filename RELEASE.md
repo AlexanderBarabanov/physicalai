@@ -4,7 +4,7 @@ Releases are automated via [release-please](https://github.com/googleapis/releas
 
 ## How it works
 
-```
+```text
 PR (conventional commits) → merge to main → release PR → merge → git tag → PyPI publish
 ```
 
@@ -17,25 +17,23 @@ The package version is derived from the git tag at build time via [hatch-vcs](ht
 
 ## Commit message format
 
-```
+```text
 <type>(<optional scope>): <description>
 ```
 
-| Type | Version bump | Appears in changelog |
-|---|---|---|
-| `feat` | minor (`0.x.0`) | ✅ Features |
-| `fix` | patch (`0.0.x`) | ✅ Bug Fixes |
-| `perf` | patch | ✅ Performance |
-| `refactor` | — | ✅ Code Refactoring |
-| `docs` | — | ✅ Documentation |
-| `test` | — | ✅ Tests |
-| `ci` | — | ✅ CI/CD |
-| `chore` | — | ✅ Chores |
-| `revert` | — | ✅ Reverts |
+- `feat`: minor (`0.x.0`) bump, appears as ✅ Features in changelog.
+- `fix`: patch (`0.0.x`) bump, appears as ✅ Bug Fixes.
+- `perf`: patch bump, appears as ✅ Performance.
+- `refactor`: no version bump, appears as ✅ Code Refactoring.
+- `docs`: no version bump, appears as ✅ Documentation.
+- `test`: no version bump, appears as ✅ Tests.
+- `ci`: no version bump, appears as ✅ CI/CD.
+- `chore`: no version bump, appears as ✅ Chores.
+- `revert`: no version bump, appears as ✅ Reverts.
 
 **Breaking change** → major bump (`x.0.0`): add `!` after the type or a `BREAKING CHANGE:` footer.
 
-```
+```text
 feat!: drop support for Python 3.10
 
 # or
