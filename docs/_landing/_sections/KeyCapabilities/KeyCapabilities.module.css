@@ -6,6 +6,14 @@
   text-align: center;
 }
 
+.description {
+  margin: 0 auto;
+  font-size: 14px;
+  margin-top: 8px;
+  max-width: 640px;
+  text-align: center;
+}
+
 .cards {
   display: grid;
   gap: 16px;
@@ -13,4 +21,68 @@
   margin-top: 64px;
   margin-bottom: 70px;
   grid-template-columns: 1fr 1fr;
+}
+
+.twoColumnsFiveRowsGrid {
+  display: grid;
+  align-items: stretch;
+  margin-top: calc(var(--margin-size) * 4);
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: repeat(5, auto);
+}
+
+.row1,
+.row3,
+.row5,
+.row7 {
+  display: grid;
+  column-gap: 64px;
+  align-items: stretch;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.row2,
+.row4,
+.row6 {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  text-align: center;
+}
+
+.row1 > *,
+.row3 > *,
+.row5 > *,
+.row7 > * {
+  align-self: center;
+}
+
+.row2 > *,
+.row4 > * {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.row1 > :first-child,
+.row3 > :first-child,
+.row5 > :first-child,
+.row7 > :first-child {
+  width: 100%;
+  height: 100%;
+  justify-self: end;
+}
+
+.row1 > :last-child,
+.row3 > :last-child,
+.row5 > :last-child,
+.row7 > :last-child {
+  justify-self: start;
+}
+
+.continuousLoopImg {
+  max-width: 400px;
+  max-height: 400px;
+  align-self: center;
+  justify-self: center;
 }

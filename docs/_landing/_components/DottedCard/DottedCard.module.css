@@ -2,7 +2,6 @@
   display: flex;
   flex-direction: column;
   padding: calc(var(--margin-size) * 4) calc(var(--margin-size) * 5);
-  gap: calc(var(--margin-size) * 3);
   background: transparent;
   position: relative;
 }

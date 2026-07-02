@@ -5,6 +5,7 @@ import { DottedCard } from "../../_components/DottedCard/DottedCardDetails";
 import { PythonCode } from "../../_components/PythonCode/PythonCode";
 import { Section } from "../../_components/Section/Section";
 import continuousLoopImg from "../../img/continuous-loop.png";
+import howItWorksImg from "../../img/how-it-works.png";
 import realTimeIa from "../../img/real-time-ai.png";
 import physicalHardware from "../../img/physical-hardware.png";
 import physicalBehavior from "../../img/physical-behavior.png";
@@ -13,7 +14,7 @@ import styles from "./HeroSection.module.css";
 
 export const HeroSection = () => {
   return (
-    <Section>
+    <Section className={styles.header}>
       <h1 className={clsx(styles.title, styles.gradientTitle)}>
         Run AI in the real world
       </h1>
@@ -81,6 +82,7 @@ export const HeroSection = () => {
 
           <div className={styles.continuousLoop}>
             <img src={continuousLoopImg} alt="Continuous Loop" />
+            <img src={howItWorksImg} alt="How It Works" />
           </div>
         </div>
       </div>

@@ -17,9 +17,10 @@ export const CapabilityCard = ({
   return (
     <DottedCard>
       <h3 className={styles.title}>{title}</h3>
-      <PythonCode code={codeSnippet} />
 
-      <p className={styles.description}>{description}</p>
+      <div className={styles.description}>{description}</div>
+
+      <PythonCode code={codeSnippet} />
     </DottedCard>
   );
 };
