@@ -42,6 +42,7 @@ from scservo_sdk import (
 )
 
 from physicalai.robot import Robot
+from physicalai.robot.device_ids import device_id_from_serial_port
 from physicalai.robot.so101.calibration import SO101Calibration
 from physicalai.robot.so101.constants import (
     MAX_SPEED_DEG_S,
@@ -118,7 +119,7 @@ class SO101(Robot):
     def __init__(
         self,
         port: str,
-        calibration: SO101Calibration | str | Path | None,
+        calibration: SO101Calibration | str | Path | dict | None,
         baudrate: int = 1_000_000,
         role: Literal["leader", "follower"] = "follower",
         unit: SO101Unit = "normalized",
@@ -157,6 +158,8 @@ class SO101(Robot):
 
         if isinstance(calibration, (str, Path)):
             calibration = SO101Calibration.from_path(calibration)
+        elif isinstance(calibration, dict):
+            calibration = SO101Calibration.from_dict(calibration)
 
         self._calibration: SO101Calibration | None = calibration
         self._uncalibrated_mode = self._calibration is None
@@ -206,6 +209,11 @@ class SO101(Robot):
     def joint_names(self) -> list[str]:
         """List of joint names in the order they appear in state/action arrays."""
         return self.JOINT_ORDER
+
+    @property
+    def device_ids(self) -> tuple[str, ...]:
+        """Symlink-resolved serial device id, e.g. ``("serial:ttyUSB0",)``."""
+        return (device_id_from_serial_port(self._port),)
 
     @property
     def port(self) -> str:

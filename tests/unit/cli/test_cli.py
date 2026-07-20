@@ -57,6 +57,10 @@ class FakeRobot:
     def joint_names(self) -> list[str]:
         return ["j0", "j1"]
 
+    @property
+    def device_ids(self) -> tuple[str, ...]:
+        return (f"fake:{self.port}",)
+
     def connect(self) -> None:
         self._connected = True
 
@@ -222,6 +226,28 @@ class TestRunParser:
         assert cfg.run.duration_s == 5
         assert cfg.runtime.robot.class_path == _FAKE_ROBOT
         assert cfg.runtime.action_source.class_path == _POLICY_SOURCE
+
+    def test_config_file_accepts_shared_robots(self, tmp_path: Path) -> None:
+        cfg_file = tmp_path / "teleop.yaml"
+        cfg_file.write_text(
+            "runtime:\n"
+            "  fps: 30\n"
+            "  robot:\n"
+            "    class_path: physicalai.robot.SharedRobot\n"
+            "    init_args:\n"
+            "      name: follower-arm\n"
+            "  action_source:\n"
+            "    class_path: physicalai.runtime.TeleopSource\n"
+            "    init_args:\n"
+            "      leader:\n"
+            "        class_path: physicalai.robot.SharedRobot\n"
+            "        init_args:\n"
+            "          name: leader-arm\n",
+        )
+        parser = run_module.build_parser()
+        cfg = parser.parse_args([f"--config={cfg_file}"])
+        assert cfg.runtime.robot.class_path == "physicalai.robot.SharedRobot"
+        assert cfg.runtime.action_source.init_args.leader.class_path == "physicalai.robot.SharedRobot"
 
     def test_cli_overrides_config_file(self, tmp_path: Path) -> None:
         cfg_file = tmp_path / "runtime.yaml"
