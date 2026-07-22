@@ -107,7 +107,27 @@ def _read_live_name_diagnostics(path: Path) -> dict[str, object] | None:
         os.kill(pid, 0)
     except OSError:
         return None
-    return diagnostics
+
+    # A PID that is alive but has already released the lock (e.g. after a clean
+    # shutdown or after a caller used acquire_locks/release_all for verification)
+    # is not an active owner.  Confirm by attempting a non-blocking exclusive
+    # trylock: success means nobody holds it; EWOULDBLOCK means someone does.
+    try:
+        fd = os.open(path, os.O_RDWR)
+    except OSError:
+        return None
+    held = False
+    try:
+        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        # Acquired the lock — no process is currently holding it.
+        with contextlib.suppress(OSError):
+            fcntl.flock(fd, fcntl.LOCK_UN)
+    except OSError:
+        # Could not acquire — some process holds the lock; this is a live owner.
+        held = True
+    finally:
+        os.close(fd)
+    return diagnostics if held else None
 
 
 def _active_owner_name(path: Path) -> str | None:

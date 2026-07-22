@@ -1,17 +1,17 @@
 # Copyright (C) 2026 Intel Corporation
 # SPDX-License-Identifier: Apache-2.0
 
-"""Serializable owner-subprocess construction config for shared robots.
+"""Serializable owner construction config for shared robots.
 
 Named ``RobotOwnerConfig`` (not ``RobotSpec``) to avoid colliding with the
 unrelated ``physicalai.inference.manifest.RobotSpec`` (a manifest-schema
-pydantic model). This is private, process-internal IPC — not a user-facing
-configuration object.
+pydantic model). Used by the foreground serve path and by the owner
+subprocess stdin handshake.
 
-The owner subprocess must construct the robot driver itself: a live
-serial/socket handle cannot cross a process boundary (D15). Only an
-importable ``robot_class`` plus JSON-serializable ``robot_kwargs`` survive
-that boundary — arbitrary robot types, including third-party plugins, work
+The owner must construct the robot driver itself: a live serial/socket
+handle cannot cross a process boundary (D15). Only an importable
+``robot_class`` plus JSON-serializable ``robot_kwargs`` survive that
+boundary — arbitrary robot types, including third-party plugins, work
 without any registry lookup here.
 
 Security: *robot_class* is trusted local application/config input, exactly
@@ -24,6 +24,7 @@ arbitrary module to import.
 from __future__ import annotations
 
 import json
+import math
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
@@ -77,7 +78,13 @@ def normalize_robot_class(robot_class: type | str) -> str:
 
 @dataclass(frozen=True)
 class RobotOwnerConfig:
-    """Everything the owner subprocess needs to construct and run a robot.
+    """Everything the owner needs to construct and run a robot.
+
+    Warning:
+        ``allow_remote=True`` exposes an unauthenticated physical ``/action``
+        endpoint beyond localhost. Any peer that can reach the owner's Zenoh
+        session can move the robot. Use only on an isolated robot-cell
+        network (VLAN/firewall) or with Zenoh ACL/TLS.
 
     Attributes:
         name: The robot's logical name (keys the Zenoh topics).
@@ -86,6 +93,9 @@ class RobotOwnerConfig:
             driver constructor (e.g. ``calibration`` as a file path).
         allow_remote: Whether the owner's Zenoh session is reachable beyond
             localhost. Fixed for the owner's lifetime once spawned.
+            ``True`` exposes an unauthenticated physical ``/action`` endpoint
+            — use only on an isolated robot-cell network or with Zenoh
+            ACL/TLS. Default ``False`` keeps the owner unreachable off-host.
         rate_hz: Owner loop rate.
         idle_timeout: Seconds with zero subscribers before self-exit.
     """
@@ -95,7 +105,7 @@ class RobotOwnerConfig:
     robot_kwargs: dict[str, Any] = field(default_factory=dict)
     allow_remote: bool = False
     rate_hz: float = DEFAULT_RATE_HZ
-    idle_timeout: float = 10.0
+    idle_timeout: float | None = 10.0
 
     def __post_init__(self) -> None:
         """Validate ``rate_hz`` and that ``robot_kwargs`` is JSON-serializable.
@@ -104,8 +114,27 @@ class RobotOwnerConfig:
             ValueError: If ``rate_hz`` is not finite and positive, or
                 ``robot_kwargs`` contains non-JSON-serializable values.
         """
-        if not (self.rate_hz > 0 and self.rate_hz < float("inf")):
+        if (
+            isinstance(self.rate_hz, bool)
+            or not isinstance(self.rate_hz, (int, float))
+            or not math.isfinite(self.rate_hz)
+            or self.rate_hz <= 0
+        ):
             msg = f"rate_hz must be finite and greater than zero, got {self.rate_hz!r}"
+            raise ValueError(msg)
+        if self.idle_timeout is not None and (
+            isinstance(self.idle_timeout, bool)
+            or not isinstance(self.idle_timeout, (int, float))
+            or not math.isfinite(self.idle_timeout)
+            or self.idle_timeout <= 0
+        ):
+            msg = f"idle_timeout must be finite and greater than zero, got {self.idle_timeout!r}"
+            raise ValueError(msg)
+        from ._ids import validate_name  # noqa: PLC0415
+
+        validate_name(self.name)
+        if not isinstance(self.robot_class, str) or not self.robot_class.strip() or "." not in self.robot_class:
+            msg = f"robot_class must be a nonempty dotted path, got {self.robot_class!r}"
             raise ValueError(msg)
         try:
             json.dumps(self.robot_kwargs)

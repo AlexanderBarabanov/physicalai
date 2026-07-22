@@ -22,6 +22,7 @@ distinguish failure kinds without string-matching the message.
 from __future__ import annotations
 
 import contextlib
+import enum
 import json
 import signal
 import sys
@@ -33,6 +34,7 @@ from typing import TYPE_CHECKING, Any
 
 from loguru import logger
 
+from physicalai.robot.errors import RobotTransportError
 from physicalai.robot.interface import Robot
 from physicalai.robot.transport._codec import (  # noqa: PLC2701
     ROBOT_TRANSPORT_PROTOCOL_VERSION,
@@ -52,11 +54,38 @@ from physicalai.robot.transport._owner_config import RobotOwnerConfig  # noqa: P
 from physicalai.robot.transport._session import open_session  # noqa: PLC2701
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
     from types import FrameType
 
 _MAX_CONSECUTIVE_FAILURES = 5
+_HEARTBEAT_INTERVAL_S = 30.0
 
 shutdown = threading.Event()
+
+
+class OwnerExitReason(enum.Enum):
+    """Reason the shared owner runtime stopped."""
+
+    SHUTDOWN = "shutdown"
+    IDLE_TIMEOUT = "idle_timeout"
+    CONSECUTIVE_READ_FAILURES = "consecutive_read_failures"
+    LOOP_FAILURE = "loop_failure"
+
+
+@dataclass(frozen=True)
+class OwnerResult:
+    """Structured result returned by the shared owner runtime."""
+
+    reason: OwnerExitReason
+    exit_code: int
+
+
+class OwnerEvent(enum.Enum):
+    """Operator-relevant pulse emitted by the owner loop."""
+
+    SUBSCRIBERS_PRESENT = "subscribers_present"
+    NO_SUBSCRIBERS = "no_subscribers"
+    HEARTBEAT = "heartbeat"
 
 
 def sigterm_handler(_signum: int, _frame: FrameType | None) -> None:
@@ -165,15 +194,31 @@ def _build_metadata(
     return metadata
 
 
+def _apply_pending_action(driver: Robot, action_sub: Any, name: str) -> None:  # noqa: ANN401
+    """Apply the newest pending action without letting invalid input stop the owner."""
+    sample = action_sub.try_recv()
+    if sample is None:
+        return
+    try:
+        action, goal_time, _send_ts = decode_action(sample.payload.to_bytes())
+        driver.send_action(action, goal_time=goal_time)
+    except Exception:  # noqa: BLE001
+        logger.warning(f"Failed to apply action for {name}")
+        logger.opt(exception=True).trace("action apply traceback")
+
+
 def _run_loop(
     driver: Robot,
     state_pub: Any,  # noqa: ANN401
     action_sub: Any,  # noqa: ANN401
     *,
     rate_hz: float,
-    idle_timeout: float,
+    idle_timeout: float | None,
     name: str,
-) -> None:
+    shutdown_event: threading.Event,
+    on_event: Callable[[OwnerEvent], None] | None = None,
+    heartbeat_interval_s: float = _HEARTBEAT_INTERVAL_S,
+) -> OwnerExitReason:
     """Single-threaded write-first owner loop.
 
     Ordering per tick: apply newest action (minimizes action latency), read
@@ -189,22 +234,30 @@ def _run_loop(
         rate_hz: Fixed loop rate.
         idle_timeout: Seconds with zero subscribers before self-exit.
         name: For logging.
+        shutdown_event: Event requesting graceful loop termination.
+        on_event: Optional callback for subscriber transitions and heartbeat telemetry.
+        heartbeat_interval_s: Seconds between heartbeat events.
+
+    Returns:
+        The reason the loop stopped.
     """
     period = 1.0 / rate_hz
     idle_since: float | None = None
     consecutive_failures = 0
     next_tick = time.monotonic()
+    next_heartbeat = next_tick + heartbeat_interval_s
+    subscribers_present = False
 
-    while not shutdown.is_set():
-        sample = action_sub.try_recv()
-        if sample is not None:
-            try:
-                action, goal_time, _send_ts = decode_action(sample.payload.to_bytes())
-                driver.send_action(action, goal_time=goal_time)
-            except Exception:  # noqa: BLE001
-                # A malformed or out-of-range action from one subscriber must
-                # not kill the owner shared by everyone else.
-                logger.warning(f"Failed to apply action for {name}", exc_info=True)
+    def _emit(event: OwnerEvent) -> None:
+        if on_event is None:
+            return
+        try:
+            on_event(event)
+        except Exception:  # noqa: BLE001
+            logger.warning(f"Owner event callback failed for {name}", exc_info=True)
+
+    while not shutdown_event.is_set():
+        _apply_pending_action(driver, action_sub, name)
 
         try:
             obs = driver.get_observation()
@@ -212,7 +265,7 @@ def _run_loop(
             consecutive_failures += 1
             if consecutive_failures >= _MAX_CONSECUTIVE_FAILURES:
                 logger.error(f"{consecutive_failures} consecutive read failures -- shutting down owner {name}")
-                break
+                return OwnerExitReason.CONSECUTIVE_READ_FAILURES
             continue
         consecutive_failures = 0
 
@@ -228,13 +281,25 @@ def _run_loop(
         now = time.monotonic()
         # Runtime returns a MatchingStatus object (always truthy); the bool
         # lives on its .matching attribute — the type stub says `-> bool`.
-        if state_pub.matching_status.matching:
+        matching = state_pub.matching_status.matching
+        if matching and not subscribers_present:
+            subscribers_present = True
+            _emit(OwnerEvent.SUBSCRIBERS_PRESENT)
+        elif not matching and subscribers_present:
+            subscribers_present = False
+            _emit(OwnerEvent.NO_SUBSCRIBERS)
+
+        if matching:
             idle_since = None
         elif idle_since is None:
             idle_since = now
-        elif now - idle_since > idle_timeout:
+        elif idle_timeout is not None and now - idle_since > idle_timeout:
             logger.info(f"No subscribers for {idle_timeout}s -- shutting down owner {name}")
-            break
+            return OwnerExitReason.IDLE_TIMEOUT
+
+        if now >= next_heartbeat:
+            _emit(OwnerEvent.HEARTBEAT)
+            next_heartbeat = now + heartbeat_interval_s
 
         next_tick += period
         sleep_time = next_tick - time.monotonic()
@@ -243,6 +308,8 @@ def _run_loop(
         else:
             # Fell behind (slow bus / blocking read); don't accumulate debt.
             next_tick = time.monotonic()
+
+    return OwnerExitReason.SHUTDOWN
 
 
 @dataclass
@@ -272,12 +339,14 @@ def _connect_and_build_metadata(
             raises.
     """
     try:
+        logger.trace(f"Connecting robot driver for {config.name!r}")
         driver.connect()
     except Exception as exc:
         msg = f"driver.connect() failed: {exc}"
         raise _StartupError(msg, phase="connection_failed") from exc
 
     first_obs = driver.get_observation()
+    logger.trace(f"Received initial observation for {config.name!r}")
     metadata = _build_metadata(config, driver, device_ids, state_dim=int(first_obs.state.shape[0]))
     return encode_metadata(metadata)
 
@@ -329,6 +398,7 @@ def _declare_zenoh_endpoints(config: RobotOwnerConfig, metadata_bytes: bytes) ->
         )
         action_sub = session.declare_subscriber(action_key(config.name), zenoh.handlers.RingChannel(1))
         metadata_queryable = session.declare_queryable(metadata_key_expr, _answer_metadata)
+        logger.trace(f"Declared state, action, and metadata endpoints for {config.name!r}")
     except Exception as exc:
         if session is not None:
             with contextlib.suppress(Exception):
@@ -367,6 +437,7 @@ def _startup(config: RobotOwnerConfig) -> _Endpoints:
             via :func:`signal_error`.
     """
     try:
+        logger.trace(f"Constructing robot driver {config.robot_class!r}")
         driver = config.build()
     except Exception as exc:
         msg = f"failed to construct {config.robot_class!r}: {exc}"
@@ -377,6 +448,7 @@ def _startup(config: RobotOwnerConfig) -> _Endpoints:
         raise _StartupError(msg, phase="construction_failed")
 
     device_ids = tuple(sorted(set(driver.device_ids)))
+    logger.trace(f"Acquiring ownership locks for {config.name!r}")
 
     try:
         locks = acquire_locks(config.name, device_ids)
@@ -409,6 +481,71 @@ def _startup(config: RobotOwnerConfig) -> _Endpoints:
     )
 
 
+def run_owner(
+    config: RobotOwnerConfig,
+    shutdown_event: threading.Event,
+    *,
+    ready: Callable[[], None] | None = None,
+    on_event: Callable[[OwnerEvent], None] | None = None,
+) -> OwnerResult:
+    """Own a robot driver and its transport endpoints in the current process.
+
+    Args:
+        config: Validated owner configuration.
+        shutdown_event: Event requesting graceful shutdown.
+        ready: Optional callback invoked after startup is complete.
+        on_event: Optional callback for operator-facing runtime telemetry.
+
+    Returns:
+        Structured termination reason and process-compatible exit code.
+
+    Raises:
+        RobotTransportError: If construction, locking, connection, or endpoint setup fails.
+    """
+    try:
+        endpoints = _startup(config)
+    except _StartupError as exc:
+        raise RobotTransportError(str(exc), phase=exc.phase, device_ids=exc.device_ids) from exc
+    reason = OwnerExitReason.LOOP_FAILURE
+    exit_code = 1
+    try:
+        if ready is not None:
+            ready()
+        reason = _run_loop(
+            endpoints.driver,
+            endpoints.state_pub,
+            endpoints.action_sub,
+            rate_hz=config.rate_hz,
+            idle_timeout=config.idle_timeout,
+            name=config.name,
+            shutdown_event=shutdown_event,
+            on_event=on_event,
+        )
+        exit_code = 0 if reason in {OwnerExitReason.SHUTDOWN, OwnerExitReason.IDLE_TIMEOUT} else 1
+    except Exception:  # noqa: BLE001
+        logger.exception(f"owner loop failed for {config.name}")
+    finally:
+        shutdown_event.set()
+        try:
+            endpoints.driver.disconnect()
+            logger.trace(f"Disconnected robot driver for {config.name!r}")
+        except Exception as exc:  # noqa: BLE001
+            logger.error(f"driver disconnect failed for {config.name}: {exc}")
+            logger.opt(exception=True).trace("driver disconnect traceback")
+            exit_code = 1
+        with contextlib.suppress(Exception):
+            endpoints.metadata_queryable.undeclare()
+            logger.trace(f"Undeclared metadata endpoint for {config.name!r}")
+        with contextlib.suppress(Exception):
+            endpoints.session.close()
+            logger.trace(f"Closed Zenoh session for {config.name!r}")
+        with contextlib.suppress(Exception):
+            endpoints.locks.release_all()
+            logger.trace(f"Released ownership locks for {config.name!r}")
+
+    return OwnerResult(reason=reason, exit_code=exit_code)
+
+
 def main() -> int:
     """Entry point for the owner worker process.
 
@@ -426,46 +563,27 @@ def main() -> int:
         return 1
 
     saved_stdout_fd = suppress_stdout()
-    try:
-        endpoints = _startup(config)
-    except _StartupError as exc:
+    stdout_restored = False
+
+    def _ready() -> None:
+        nonlocal stdout_restored
         restore_stdout(saved_stdout_fd)
+        stdout_restored = True
+        signal_ready()
+
+    try:
+        result = run_owner(config, shutdown, ready=_ready)
+    except RobotTransportError as exc:
+        if not stdout_restored:
+            restore_stdout(saved_stdout_fd)
         signal_error(str(exc), tb=traceback.format_exc(), phase=exc.phase, device_ids=exc.device_ids)
         return 1
     except Exception as exc:  # noqa: BLE001
-        restore_stdout(saved_stdout_fd)
+        if not stdout_restored:
+            restore_stdout(saved_stdout_fd)
         signal_error(f"{type(exc).__name__}: {exc}", tb=traceback.format_exc(), phase="unexpected_startup_failure")
         return 1
-    restore_stdout(saved_stdout_fd)
-
-    signal_ready()
-
-    try:
-        _run_loop(
-            endpoints.driver,
-            endpoints.state_pub,
-            endpoints.action_sub,
-            rate_hz=config.rate_hz,
-            idle_timeout=config.idle_timeout,
-            name=config.name,
-        )
-    except Exception:  # noqa: BLE001
-        logger.exception(f"owner loop failed for {config.name}")
-    finally:
-        shutdown.set()
-        # Safe-state contract: the owner (not subscribers) stops/homes the
-        # robot on exit, whether idle-timeout, SIGTERM, or loop failure.
-        try:
-            endpoints.driver.disconnect()
-        except Exception:  # noqa: BLE001
-            logger.exception(f"driver disconnect failed for {config.name}")
-        with contextlib.suppress(Exception):
-            endpoints.metadata_queryable.undeclare()
-        with contextlib.suppress(Exception):
-            endpoints.session.close()
-        endpoints.locks.release_all()
-
-    return 0
+    return result.exit_code
 
 
 if __name__ == "__main__":
