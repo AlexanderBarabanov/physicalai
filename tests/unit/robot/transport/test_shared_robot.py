@@ -11,6 +11,7 @@ from uuid import uuid4
 import numpy as np
 import pytest
 
+from physicalai.config import ComponentConfigError
 from physicalai.robot.errors import (
     RobotNameConflict,
     RobotNotConnectedError,
@@ -30,12 +31,20 @@ _NUM_JOINTS = 6
 _STATE_DIM = 12  # fake ships positions + velocities
 
 
-def _shared_robot(name: str, *, allow_remote: bool = False, **robot_kwargs: object) -> SharedRobot:
+def _shared_robot(
+    name: str,
+    *,
+    allow_remote: bool = False,
+    idle_timeout: float | None = 0.5,
+    **robot_init_args: object,
+) -> SharedRobot:
     return SharedRobot(
         name,
-        robot_class=FAKE_ROBOT_CLASS,
-        robot_kwargs={"device_ids": [f"fake:{name}"], **robot_kwargs},
-        idle_timeout=0.5,
+        robot={
+            "class_path": FAKE_ROBOT_CLASS,
+            "init_args": {"device_ids": [f"fake:{name}"], **robot_init_args},
+        },
+        idle_timeout=idle_timeout,
         allow_remote=allow_remote,
     )
 
@@ -75,14 +84,33 @@ class TestConstruction:
         with pytest.raises(ValueError, match="invalid robot name"):
             SharedRobot("bad/name")
 
-    def test_attach_only_has_no_robot_class(self) -> None:
+    def test_attach_only_has_no_robot_config(self) -> None:
         robot = SharedRobot.attach("left-arm")
         assert robot.name == "left-arm"
+        assert robot._robot is None
         assert robot.device_ids == ()
 
-    def test_class_object_normalized(self) -> None:
-        robot = SharedRobot("left-arm", robot_class=FakeRobot, robot_kwargs={"port": "/dev/ttyUSB0"})
-        assert robot._robot_class == "tests.unit.robot.transport.fake.FakeRobot"
+    def test_robot_component_config_normalized(self) -> None:
+        robot = SharedRobot(
+            "left-arm",
+            robot={"class_path": FAKE_ROBOT_CLASS, "init_args": {"port": "/dev/ttyUSB0"}},
+        )
+        assert robot._robot == {
+            "class_path": FAKE_ROBOT_CLASS,
+            "init_args": {"port": "/dev/ttyUSB0"},
+        }
+
+    def test_from_config_stores_component_config(self) -> None:
+        robot = SharedRobot.from_config(
+            {"class_path": FAKE_ROBOT_CLASS, "init_args": {"port": "/dev/fake0"}},
+            name="left-arm",
+        )
+        assert robot._robot == {"class_path": FAKE_ROBOT_CLASS, "init_args": {"port": "/dev/fake0"}}
+
+    def test_constructor_requires_component_config_mapping(self) -> None:
+        driver = FakeRobot(port="/dev/fake0", device_ids=("fake:/dev/fake0",))
+        with pytest.raises(ComponentConfigError, match="robot must be a ComponentConfig mapping"):
+            SharedRobot("left-arm", robot=driver)  # type: ignore[arg-type]
 
     def test_satisfies_robot_protocol(self) -> None:
         from physicalai.robot import Robot
@@ -216,7 +244,9 @@ class TestSharedRobotLifecycle:
         assert robot.metadata["device_ids"] == [f"fake:{robot.name}"]
 
     def test_remote_owner_metadata_redacts_device_ids(self, unique_id: str) -> None:
-        robot = _shared_robot(unique_id.replace("/", "-"), allow_remote=True)
+        # Remote scouting can take longer than the default 0.5s idle timeout;
+        # keep the owner alive until this test attaches and stops it explicitly.
+        robot = _shared_robot(unique_id.replace("/", "-"), allow_remote=True, idle_timeout=None)
         robot.connect()
         try:
             assert robot.metadata is not None
@@ -231,15 +261,21 @@ class TestSharedRobotLifecycle:
         """robot_class mismatch on an existing owner is diagnostic, not fatal."""
         import logging
 
+        from physicalai.robot.transport._owner_config import RobotOwnerConfig
+
         impostor = SharedRobot(
             module_owner.name,
-            robot_class="physicalai.robot.transport._session.open_session",
-            robot_kwargs={"device_ids": [f"fake:{module_owner.name}"]},
+            robot={
+                "class_path": f"{RobotOwnerConfig.__module__}.{RobotOwnerConfig.__qualname__}",
+                "init_args": {},
+            },
         )
         with caplog.at_level(logging.WARNING):
             impostor.connect()  # attaches to the same owner; must not raise
         try:
             assert impostor.is_connected()
+            # loguru writes to stderr; message shape is asserted via construction above
+            assert impostor._robot_class != module_owner._robot_class
         finally:
             impostor.disconnect()
 
@@ -260,7 +296,10 @@ class TestSharedRobotLifecycle:
         assert metadata is not None
         shared_device = metadata["device_ids"][0]
         other_name = unique_id.replace("/", "-")
-        second = SharedRobot(other_name, robot_class=FAKE_ROBOT_CLASS, robot_kwargs={"device_ids": [shared_device]})
+        second = SharedRobot(
+            other_name,
+            robot={"class_path": FAKE_ROBOT_CLASS, "init_args": {"device_ids": [shared_device]}},
+        )
         with pytest.raises(RobotDeviceAlreadyOwned):
             second.connect()
 
@@ -294,8 +333,7 @@ class TestIndependentSpawn:
         def _run(key: str, device_id: str) -> None:
             robot = SharedRobot(
                 name,
-                robot_class=FAKE_ROBOT_CLASS,
-                robot_kwargs={"device_ids": [device_id]},
+                robot={"class_path": FAKE_ROBOT_CLASS, "init_args": {"device_ids": [device_id]}},
                 allow_remote=allow_remote,
             )
             barrier.wait()
