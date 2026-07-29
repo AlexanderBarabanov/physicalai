@@ -31,7 +31,7 @@ jobs:
         include:
           # Manifest / component instantiation
           - harness: manifest
-            seed_dir: tests/fuzz/seeds/manifest
+            seed_dir: tests/fuzz/seeds/fuzz_manifest
           - harness: component
             seed_dir: ""
           # Array processing pipeline
