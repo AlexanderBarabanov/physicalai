@@ -202,45 +202,28 @@ jobs:
           if-no-files-found: warn
           retention-days: 14
 
-      # ── Job summary ───────────────────────────────────────────────────────
-      # Written only when there is something to act on; clean runs produce
-      # no summary entry so the page stays uncluttered.
-      - name: Write job summary
+      # ── Harness status (consumed by the report job) ──────────────────────
+      - name: Write harness status
         if: always()
-        env:
-          CRASHES_FOUND:       ${{ steps.crash_check.outputs.crashes_found }}
-          FUZZER_CONCLUSION:   ${{ steps.run_fuzzer.conclusion }}
-          CRASH_ARTIFACT_ID:   ${{ steps.upload_crashes.outputs.artifact-id }}
-          LOG_ARTIFACT_ID:     ${{ steps.upload_log_diagnostic.outputs.artifact-id }}
         run: |
-          LOG="fuzz_output_${{ matrix.harness }}.txt"
-
-          if [ "${CRASHES_FOUND}" == "true" ]; then
-            {
-              echo "> [!CAUTION]"
-              echo "> **fuzz / ${{ matrix.harness }}** - crashes detected."
-              if [ -n "${CRASH_ARTIFACT_ID}" ]; then
-                echo "> Crash inputs + traceback: \`crashes-${{ matrix.harness }}-${{ github.run_id }}\`"
-              else
-                echo "> Crash files detected but upload failed - check the job log."
-              fi
-            } >> "${GITHUB_STEP_SUMMARY}"
-          elif [ "${FUZZER_CONCLUSION}" == "failure" ]; then
-            {
-              echo "> [!CAUTION]"
-              echo "> **fuzz / ${{ matrix.harness }}** - fuzzer exited non-zero but wrote no crash files."
-              echo "> This is a **startup failure**: the harness crashed before libFuzzer initialised"
-              echo "> (common causes: ImportError, NameError, SyntaxError at module level)."
-              if [ -n "${LOG_ARTIFACT_ID}" ]; then
-                echo "> Log: \`log-${{ matrix.harness }}-${{ github.run_id }}\`"
-              fi
-            } >> "${GITHUB_STEP_SUMMARY}"
-          elif [ ! -f "${LOG}" ]; then
-            {
-              echo "> [!WARNING]"
-              echo "> **fuzz / ${{ matrix.harness }}** - log file missing; runner may have timed out."
-            } >> "${GITHUB_STEP_SUMMARY}"
+          if [ "${{ steps.crash_check.outputs.crashes_found }}" == "true" ]; then
+            echo "CRASH" > status.txt
+          elif [ "${{ steps.run_fuzzer.conclusion }}" == "failure" ]; then
+            echo "FAIL" > status.txt
+          elif [ ! -f "fuzz_output_${{ matrix.harness }}.txt" ]; then
+            echo "TIMEOUT" > status.txt
+          else
+            echo "OK" > status.txt
           fi
+
+      - name: Upload harness status
+        if: always()
+        uses: actions/upload-artifact@v4 # TODO: pin to commit SHA
+        with:
+          name: status-${{ matrix.harness }}-${{ github.run_id }}
+          path: status.txt
+          if-no-files-found: warn
+          retention-days: 1
 
       # ── Fail the job ──────────────────────────────────────────────────────
       # Fails for both libFuzzer crashes (crash files written) and startup
@@ -254,3 +237,44 @@ jobs:
             echo "::error::Fuzzer exited non-zero without crash files in ${{ matrix.harness }} — startup failure, see diagnostic log"
           fi
           exit 1
+
+  # ── Consolidated summary ─────────────────────────────────────────────────
+  # Runs after all harness jobs (pass or fail) and renders a single table
+  # so the overall result is visible at a glance on the workflow summary page.
+  report:
+    name: "Fuzz report"
+    needs: [fuzz]
+    if: always()
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: read
+      actions: read   # required to download artifacts from sibling jobs
+    steps:
+      - name: Download all harness status artifacts
+        uses: actions/download-artifact@v4 # TODO: pin to commit SHA
+        with:
+          pattern: "status-*-${{ github.run_id }}"
+          path: statuses/
+
+      - name: Render summary table
+        run: |
+          RUN_ID="${{ github.run_id }}"
+          {
+            echo "| Harness | Status |"
+            echo "| --- | --- |"
+            for dir in statuses/*/; do
+              [ -d "${dir}" ] || continue
+              name=$(basename "${dir}")
+              harness="${name#status-}"
+              harness="${harness%-${RUN_ID}}"
+              status=$(cat "${dir}status.txt" 2>/dev/null || echo "UNKNOWN")
+              case "${status}" in
+                OK)              row="| ${harness} | OK |" ;;
+                CRASH)           row="| ${harness} | **CRASH** - see \`crashes-${harness}-${RUN_ID}\` artifact |" ;;
+                FAIL)            row="| ${harness} | **FAIL** (startup) - see \`log-${harness}-${RUN_ID}\` artifact |" ;;
+                TIMEOUT)         row="| ${harness} | **TIMEOUT** - runner exceeded job limit |" ;;
+                *)               row="| ${harness} | ${status} |" ;;
+              esac
+              echo "${row}"
+            done
+          } >> "${GITHUB_STEP_SUMMARY}"
