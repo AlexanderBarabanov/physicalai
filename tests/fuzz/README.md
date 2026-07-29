@@ -4,7 +4,7 @@
 
 Physical AI Runtime is a robot control loop that loads an exported, fine-tuned VLA policy, reads sensor observations, performs inference, and sends action vectors to the hardware. Because the system consumes file-system artifacts (such as manifests, model weights, and statistics files) and NumPy array streams (including camera frames and robot joint readings), it must be able to handle malformed, adversarial, and out-of-range inputs without crashing or generating unsafe actions. Fuzzing is used to identify input-related issues that could cause crashes, unexpected behavior, or unsafe actions.
 
-Fuzzing automation uses [Atheris](https://github.com/google/atheris)- a coverage-guided Python fuzzer backed by libFuzzer. 
+Fuzzing automation uses [Atheris](https://github.com/google/atheris) - a coverage-guided Python fuzzer backed by libFuzzer.
 The GitHub Actions workflow `.github/workflows/fuzz.yml` runs all harnesses in parallel on a schedule and on every PR that touches `tests/fuzz/` or the workflow file itself. Crash artifacts are uploaded for the future analysis.
 
 ## Fuzz target inventory
@@ -27,7 +27,6 @@ Each row maps a harness file to the component it covers, its input space, and th
 | [`fuzz_action_chunk_trimmer.py`](harnesses/fuzz_action_chunk_trimmer.py) | `ActionChunkTrimmer.__call__(outputs)`                                       | Action arrays with arbitrary first and second dimensions; extreme `n_action_steps`                                                            | I-15           |
 | [`fuzz_lerp_smoother.py`](harnesses/fuzz_lerp_smoother.py)               | `LerpSmoother.merge(remaining, incoming)`                                    | 2D float arrays with arbitrary row counts, zero rows, NaN/Inf values, mismatched dims                                                         | I-16, I-17     |
 | [`fuzz_action_queue.py`](harnesses/fuzz_action_queue.py)                 | `ChunkedActionQueue.push_chunk(chunk, offset)` + `pop()`                     | Arbitrary chunk shapes, extreme offsets, concurrent push/pop sequences                                                                        | I-18           |
-
 
 ## Key invariants for fuzzing oracles
 
@@ -87,7 +86,6 @@ If neither `remaining` nor `incoming` contains NaN or Inf, the merged output mus
 **I-18 — ChunkedActionQueue is thread-safe**  
 Concurrent `push_chunk` and `pop` calls must not raise exceptions, corrupt the deque, or return arrays of unexpected shape. `pop()` returns either `None` or a 1-D array; it must never raise.
 
-
 ## Shared Test Utilities
 
 [`harnesses/_helpers.py`](harnesses/_helpers.py) provides fuzz-data-driven constructors used across multiple harnesses:
@@ -101,7 +99,6 @@ Concurrent `push_chunk` and `pop` calls must not raise exceptions, corrupt the d
 | `make_stats_dict(fdp, feature, mode=...)` | Pre-built stats dict (mean/std, min/max, q01/q99) with fuzz-derived float32 values |
 
 All helpers pad short byte sequences with zeros so the harness never throws `IndexError` on exhausted fuzz data.
-
 
 ## Corpus and seeds
 
