@@ -128,8 +128,7 @@ jobs:
               github.event_name == 'push' && '300' ||
               github.event.inputs.duration_s || '120'
             }}
-          # Emit a Python traceback on segfault/abort in native extensions
-          # (cv2, onnxruntime, openvino) so crashes are diagnosed from logs.
+          # Dump the Python stack trace on crashes.
           PYTHONFAULTHANDLER: "1"
         run: |
           set -o pipefail
@@ -214,41 +213,3 @@ jobs:
             echo "::error::Fuzzer exited non-zero without crash files in ${{ matrix.harness }} — startup failure, see diagnostic log"
           fi
           exit 1
-
-  # ── Consolidated summary ─────────────────────────────────────────────────
-  # Runs after all harness jobs (pass or fail) and queries the GitHub Jobs API
-  # to read each matrix job's conclusion — no status-file artifacts needed.
-  report:
-    name: "Fuzz report"
-    needs: [fuzz]
-    if: always()
-    runs-on: ubuntu-22.04
-    permissions:
-      contents: read
-      actions: read   # required by gh api to read job conclusions
-    steps:
-      - name: Render summary table
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          {
-            echo "| Harness | Result |"
-            echo "| --- | --- |"
-            gh api \
-              "/repos/${{ github.repository }}/actions/runs/${{ github.run_id }}/jobs" \
-              --jq '
-                .jobs[]
-                | select(.name | startswith("fuzz / "))
-                | [(.name | ltrimstr("fuzz / ")), .conclusion]
-                | @tsv
-              ' \
-            | sort \
-            | while IFS=$'\t' read -r harness conclusion; do
-                case "${conclusion}" in
-                  success)   echo "| ${harness} | OK |" ;;
-                  failure)   echo "| ${harness} | **FAIL** |" ;;
-                  cancelled) echo "| ${harness} | cancelled |" ;;
-                  *)         echo "| ${harness} | ${conclusion} |" ;;
-                esac
-              done
-          } >> "${GITHUB_STEP_SUMMARY}"

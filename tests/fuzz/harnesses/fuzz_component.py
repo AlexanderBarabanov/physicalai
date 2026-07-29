@@ -37,16 +37,12 @@ def _sub_resolve_artifact(fdp: atheris.FuzzedDataProvider, export_dir: str) -> N
         return
 
     try:
-        result = resolve_artifact(spec, export_dir)
+        result = resolve_artifact(spec, Path(export_dir))
     except ValueError:
         return  # Expected for traversal attempts
 
     resolved = result.flat_params.get("artifact", "")
     if resolved and os.path.isabs(resolved):
-        # Use Path.is_relative_to() — str.startswith() is NOT a safe path
-        # containment check (/tmp/export_evil starts with /tmp/export).
-        from pathlib import Path
-
         real_export = Path(os.path.realpath(export_dir))
         real_resolved = Path(os.path.normpath(resolved))
         assert real_resolved.is_relative_to(real_export), (
@@ -131,7 +127,7 @@ def _sub_symlink_bypass(export_dir: str) -> None:
             return
 
         try:
-            result = resolve_artifact(spec, export_dir)
+            result = resolve_artifact(spec, Path(export_dir))
         except ValueError:
             # The bypass was closed — surface as assertion so it's not silently skipped
             raise AssertionError(
