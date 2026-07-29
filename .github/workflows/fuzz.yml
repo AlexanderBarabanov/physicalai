@@ -203,10 +203,8 @@ jobs:
           retention-days: 14
 
       # ── Job summary ───────────────────────────────────────────────────────
-      # Three tiers:
-      #   ✅  clean run
-      #   CAUTION  libFuzzer crash → artifact link
-      #   CAUTION  startup failure (non-zero exit, no crash files) → log link
+      # Written only when there is something to act on; clean runs produce
+      # no summary entry so the page stays uncluttered.
       - name: Write job summary
         if: always()
         env:
@@ -216,37 +214,33 @@ jobs:
           LOG_ARTIFACT_ID:     ${{ steps.upload_log_diagnostic.outputs.artifact-id }}
         run: |
           LOG="fuzz_output_${{ matrix.harness }}.txt"
-          new_units="-"
-          exec_per_s="-"
-          if [ -f "${LOG}" ]; then
-            new_units=$(awk '/stat::new_units_added/{print $NF}'       "${LOG}")
-            exec_per_s=$(awk '/stat::average_exec_per_sec/{print $NF}'  "${LOG}")
-          fi
 
-          {
-            if [ "${CRASHES_FOUND}" == "true" ]; then
+          if [ "${CRASHES_FOUND}" == "true" ]; then
+            {
               echo "> [!CAUTION]"
-              echo "> **fuzz / ${{ matrix.harness }}** \u2014 crashes detected."
+              echo "> **fuzz / ${{ matrix.harness }}** - crashes detected."
               if [ -n "${CRASH_ARTIFACT_ID}" ]; then
                 echo "> Crash inputs + traceback: \`crashes-${{ matrix.harness }}-${{ github.run_id }}\`"
               else
-                echo "> Crash files detected but upload failed \u2014 check the job log."
+                echo "> Crash files detected but upload failed - check the job log."
               fi
-            elif [ "${FUZZER_CONCLUSION}" == "failure" ]; then
+            } >> "${GITHUB_STEP_SUMMARY}"
+          elif [ "${FUZZER_CONCLUSION}" == "failure" ]; then
+            {
               echo "> [!CAUTION]"
-              echo "> **fuzz / ${{ matrix.harness }}** \u2014 fuzzer exited non-zero but wrote no crash files."
+              echo "> **fuzz / ${{ matrix.harness }}** - fuzzer exited non-zero but wrote no crash files."
               echo "> This is a **startup failure**: the harness crashed before libFuzzer initialised"
               echo "> (common causes: ImportError, NameError, SyntaxError at module level)."
               if [ -n "${LOG_ARTIFACT_ID}" ]; then
                 echo "> Log: \`log-${{ matrix.harness }}-${{ github.run_id }}\`"
               fi
-            elif [ ! -f "${LOG}" ]; then
+            } >> "${GITHUB_STEP_SUMMARY}"
+          elif [ ! -f "${LOG}" ]; then
+            {
               echo "> [!WARNING]"
-              echo "> **fuzz / ${{ matrix.harness }}** \u2014 log file missing; runner may have timed out."
-            else
-              echo "\u2705 **fuzz / ${{ matrix.harness }}** \u2014 ${new_units} new corpus inputs \u00b7 ${exec_per_s} exec/s"
-            fi
-          } >> "${GITHUB_STEP_SUMMARY}"
+              echo "> **fuzz / ${{ matrix.harness }}** - log file missing; runner may have timed out."
+            } >> "${GITHUB_STEP_SUMMARY}"
+          fi
 
       # ── Fail the job ──────────────────────────────────────────────────────
       # Fails for both libFuzzer crashes (crash files written) and startup
