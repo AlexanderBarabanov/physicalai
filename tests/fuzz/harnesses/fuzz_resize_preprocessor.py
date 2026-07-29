@@ -1,3 +1,6 @@
+# Copyright (C) 2026 Intel Corporation
+# SPDX-License-Identifier: Apache-2.0
+
 """Fuzz ResizePreprocessor — all image key presentations, zero spatial dims,
 channels-first/last layouts, and extreme resolutions. Output must be float32 channels-first.
 """

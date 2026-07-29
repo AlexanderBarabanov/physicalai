@@ -1,3 +1,6 @@
+# Copyright (C) 2026 Intel Corporation
+# SPDX-License-Identifier: Apache-2.0
+
 """Fuzz ActionNormalizer — "action" key must always be in output and other keys must pass through unchanged."""
 from __future__ import annotations
 

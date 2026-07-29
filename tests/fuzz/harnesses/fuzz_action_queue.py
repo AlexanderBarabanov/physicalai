@@ -1,3 +1,6 @@
+# Copyright (C) 2026 Intel Corporation
+# SPDX-License-Identifier: Apache-2.0
+
 """Fuzz ChunkedActionQueue — concurrent push/pop must not deadlock, crash, or return non-1D arrays.
 Chunks are pre-generated before threads start so FuzzedDataProvider is single-threaded.
 """

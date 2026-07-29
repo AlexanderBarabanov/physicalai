@@ -1,3 +1,6 @@
+# Copyright (C) 2026 Intel Corporation
+# SPDX-License-Identifier: Apache-2.0
+
 """Fuzz _prepare_inputs — dot-key collision consistency, filtering correctness, and no crashes.
 
 When a flat key "obs.image" and a nested dict {"obs": {"image": x}} are both present,

@@ -1,3 +1,6 @@
+# Copyright (C) 2026 Intel Corporation
+# SPDX-License-Identifier: Apache-2.0
+
 """Fuzz Manifest.load() — JSON parsing and Pydantic validators.
 
 Path A: raw JSON bytes through json.loads.

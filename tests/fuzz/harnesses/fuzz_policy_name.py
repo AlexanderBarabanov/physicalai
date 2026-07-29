@@ -1,3 +1,6 @@
+# Copyright (C) 2026 Intel Corporation
+# SPDX-License-Identifier: Apache-2.0
+
 """Fuzz policy name validation — _is_safe_policy_name must never crash;
 InferenceModel must raise ValueError for unsafe names and not for safe ones.
 """

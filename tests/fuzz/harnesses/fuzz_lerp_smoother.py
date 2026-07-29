@@ -1,3 +1,6 @@
+# Copyright (C) 2026 Intel Corporation
+# SPDX-License-Identifier: Apache-2.0
+
 """Fuzz LerpSmoother.merge — output always 2-D float32; ValueError for shape violations;
 empty remaining must equal ReplaceSmoother (differential check).
 """

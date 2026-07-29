@@ -1,3 +1,6 @@
+# Copyright (C) 2026 Intel Corporation
+# SPDX-License-Identifier: Apache-2.0
+
 """Fuzz StatsNormalizer — all four modes, extreme stat values (inf, nan, negative std),
 arbitrary array shapes, passthrough-key preservation, and NaN propagation.
 """

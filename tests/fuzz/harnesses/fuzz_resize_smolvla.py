@@ -1,3 +1,6 @@
+# Copyright (C) 2026 Intel Corporation
+# SPDX-License-Identifier: Apache-2.0
+
 """Fuzz ResizeSmolVLA — IMAGES output must be float32 in [-1, 1]; IMAGE_MASKS must be bool-compatible."""
 from __future__ import annotations
 

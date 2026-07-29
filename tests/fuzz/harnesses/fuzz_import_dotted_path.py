@@ -1,3 +1,6 @@
+# Copyright (C) 2026 Intel Corporation
+# SPDX-License-Identifier: Apache-2.0
+
 """Fuzz import_dotted_path — arbitrary dotted strings must not crash Python;
 strings without a dot must raise ValueError.
 """

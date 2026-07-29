@@ -1,3 +1,6 @@
+# Copyright (C) 2026 Intel Corporation
+# SPDX-License-Identifier: Apache-2.0
+
 """Fuzz ActionChunkTrimmer — 3-D action output must be trimmed to n_action_steps; other keys pass through unchanged."""
 from __future__ import annotations
 

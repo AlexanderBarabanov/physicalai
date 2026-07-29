@@ -1,3 +1,6 @@
+# Copyright (C) 2026 Intel Corporation
+# SPDX-License-Identifier: Apache-2.0
+
 """Fuzz _detect_backend — random file names in a temp dir must either raise ValueError
 or return a registered backend name; empty dir must always raise ValueError.
 """
