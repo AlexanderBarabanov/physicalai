@@ -17,12 +17,18 @@
 #   pull_request  → 30 s   (quick sanity check, no regression)
 #   scheduled     → 120 s  (weekly campaign)
 #   manual        → value of duration_s input (default 300 s)
+#   push/fuzz     → 300 s  (same as manual default; temporary branch for testing)
 
 name: Fuzz
 
 on:
   schedule:
     - cron: "0 2 * * 1" # Every Monday at 02:00 UTC
+  # Temporary: push to the fuzz branch triggers a full manual-equivalent run
+  # (300 s/target).  Remove this trigger once testing is complete.
+  push:
+    branches:
+      - fuzz
   workflow_dispatch:
     inputs:
       duration_s:
@@ -129,10 +135,11 @@ jobs:
       # ── Fuzzing run ───────────────────────────────────────────────────────
       - name: Run fuzzer
         env:
-          # Duration ladder: PR=30s, scheduled=120s, manual=input value
+          # Duration ladder: PR=30s, push/fuzz=300s, scheduled=120s, manual=input value
           FUZZ_DURATION: >-
             ${{
               github.event_name == 'pull_request' && '30' ||
+              github.event_name == 'push' && '300' ||
               github.event.inputs.duration_s || '120'
             }}
           # Emit a Python traceback on segfault/abort in native extensions
