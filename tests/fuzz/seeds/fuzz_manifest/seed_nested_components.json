@@ -1,7 +1,7 @@
 {
   "format": "policy_package",
   "version": "1.0",
-  "policy": {"name": "deep"},
+  "policy": { "name": "deep" },
   "model": {
     "n_obs_steps": 1,
     "runner": {

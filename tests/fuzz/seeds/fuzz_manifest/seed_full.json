@@ -10,8 +10,8 @@
   },
   "model": {
     "n_obs_steps": 1,
-    "runner": {"type": "single_pass"},
-    "artifacts": {"model": "model.onnx"},
+    "runner": { "type": "single_pass" },
+    "artifacts": { "model": "model.onnx" },
     "preprocessors": [
       {
         "type": "normalize",
@@ -39,13 +39,33 @@
       {
         "name": "main",
         "type": "Koch v1.1",
-        "state": {"shape": [6], "dtype": "float32", "order": ["shoulder_pan", "shoulder_lift", "elbow_flex", "wrist_flex", "wrist_roll", "gripper"]},
-        "action": {"shape": [6], "dtype": "float32", "order": ["shoulder_pan", "shoulder_lift", "elbow_flex", "wrist_flex", "wrist_roll", "gripper"]}
+        "state": {
+          "shape": [6],
+          "dtype": "float32",
+          "order": [
+            "shoulder_pan",
+            "shoulder_lift",
+            "elbow_flex",
+            "wrist_flex",
+            "wrist_roll",
+            "gripper"
+          ]
+        },
+        "action": {
+          "shape": [6],
+          "dtype": "float32",
+          "order": [
+            "shoulder_pan",
+            "shoulder_lift",
+            "elbow_flex",
+            "wrist_flex",
+            "wrist_roll",
+            "gripper"
+          ]
+        }
       }
     ],
-    "cameras": [
-      {"name": "top", "shape": [3, 480, 640], "dtype": "uint8"}
-    ]
+    "cameras": [{ "name": "top", "shape": [3, 480, 640], "dtype": "uint8" }]
   },
   "metadata": {
     "created_at": "2026-01-01T00:00:00Z",
