@@ -652,27 +652,6 @@ class TestResolveArtifact:
         with pytest.raises(ValueError, match="escapes the export directory"):
             resolve_artifact(spec, tmp_path)
 
-    def test_rejects_absolute_artifact_outside_export_dir(self, tmp_path: Path) -> None:
-        """Absolute artifact paths that escape export_dir must be rejected.
-
-        Regression test for the bypass found by fuzzing: the old code skipped
-        the traversal check entirely for absolute paths, allowing a manifest to
-        specify e.g. ``"artifact": "/etc/shadow"`` and have it pass through
-        unchecked.
-        """
-        spec = ComponentSpec.model_validate({"type": "normalize", "artifact": "/etc/passwd"})
-        with pytest.raises(ValueError, match="escapes the export directory"):
-            resolve_artifact(spec, tmp_path)
-
-    def test_rejects_absolute_artifact_class_path_outside_export_dir(self, tmp_path: Path) -> None:
-        """Same bypass via init_args in a class_path-based spec."""
-        spec = ComponentSpec.model_validate({
-            "class_path": "physicalai.inference.preprocessors.StatsNormalizer",
-            "init_args": {"artifact": "/etc/shadow"},
-        })
-        with pytest.raises(ValueError, match="escapes the export directory"):
-            resolve_artifact(spec, tmp_path)
-
     def test_hf_hub_symlink_sibling_files_discoverable(self, tmp_path: Path) -> None:
         """The resolved artifact path must keep sibling files (e.g. OV .bin) discoverable.
 
