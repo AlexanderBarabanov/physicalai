@@ -202,29 +202,6 @@ jobs:
           if-no-files-found: warn
           retention-days: 14
 
-      # ── Harness status (consumed by the report job) ──────────────────────
-      - name: Write harness status
-        if: always()
-        run: |
-          if [ "${{ steps.crash_check.outputs.crashes_found }}" == "true" ]; then
-            echo "CRASH" > status.txt
-          elif [ "${{ steps.run_fuzzer.conclusion }}" == "failure" ]; then
-            echo "FAIL" > status.txt
-          elif [ ! -f "fuzz_output_${{ matrix.harness }}.txt" ]; then
-            echo "TIMEOUT" > status.txt
-          else
-            echo "OK" > status.txt
-          fi
-
-      - name: Upload harness status
-        if: always()
-        uses: actions/upload-artifact@v4 # TODO: pin to commit SHA
-        with:
-          name: status-${{ matrix.harness }}-${{ github.run_id }}
-          path: status.txt
-          if-no-files-found: warn
-          retention-days: 1
-
       # ── Fail the job ──────────────────────────────────────────────────────
       # Fails for both libFuzzer crashes (crash files written) and startup
       # failures (fuzzer exited non-zero, no crash files).
@@ -239,8 +216,8 @@ jobs:
           exit 1
 
   # ── Consolidated summary ─────────────────────────────────────────────────
-  # Runs after all harness jobs (pass or fail) and renders a single table
-  # so the overall result is visible at a glance on the workflow summary page.
+  # Runs after all harness jobs (pass or fail) and queries the GitHub Jobs API
+  # to read each matrix job's conclusion — no status-file artifacts needed.
   report:
     name: "Fuzz report"
     needs: [fuzz]
@@ -248,33 +225,30 @@ jobs:
     runs-on: ubuntu-22.04
     permissions:
       contents: read
-      actions: read   # required to download artifacts from sibling jobs
+      actions: read   # required by gh api to read job conclusions
     steps:
-      - name: Download all harness status artifacts
-        uses: actions/download-artifact@v4 # TODO: pin to commit SHA
-        with:
-          pattern: "status-*-${{ github.run_id }}"
-          path: statuses/
-
       - name: Render summary table
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
-          RUN_ID="${{ github.run_id }}"
           {
-            echo "| Harness | Status |"
+            echo "| Harness | Result |"
             echo "| --- | --- |"
-            for dir in statuses/*/; do
-              [ -d "${dir}" ] || continue
-              name=$(basename "${dir}")
-              harness="${name#status-}"
-              harness="${harness%-${RUN_ID}}"
-              status=$(cat "${dir}status.txt" 2>/dev/null || echo "UNKNOWN")
-              case "${status}" in
-                OK)              row="| ${harness} | OK |" ;;
-                CRASH)           row="| ${harness} | **CRASH** - see \`crashes-${harness}-${RUN_ID}\` artifact |" ;;
-                FAIL)            row="| ${harness} | **FAIL** (startup) - see \`log-${harness}-${RUN_ID}\` artifact |" ;;
-                TIMEOUT)         row="| ${harness} | **TIMEOUT** - runner exceeded job limit |" ;;
-                *)               row="| ${harness} | ${status} |" ;;
-              esac
-              echo "${row}"
-            done
+            gh api \
+              "/repos/${{ github.repository }}/actions/runs/${{ github.run_id }}/jobs" \
+              --jq '
+                .jobs[]
+                | select(.name | startswith("fuzz / "))
+                | [(.name | ltrimstr("fuzz / ")), .conclusion]
+                | @tsv
+              ' \
+            | sort \
+            | while IFS=$'\t' read -r harness conclusion; do
+                case "${conclusion}" in
+                  success)   echo "| ${harness} | OK |" ;;
+                  failure)   echo "| ${harness} | **FAIL** |" ;;
+                  cancelled) echo "| ${harness} | cancelled |" ;;
+                  *)         echo "| ${harness} | ${conclusion} |" ;;
+                esac
+              done
           } >> "${GITHUB_STEP_SUMMARY}"
