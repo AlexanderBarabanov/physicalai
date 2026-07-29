@@ -134,6 +134,7 @@ jobs:
 
       # ── Fuzzing run ───────────────────────────────────────────────────────
       - name: Run fuzzer
+        id: run_fuzzer
         env:
           # Duration ladder: PR=30s, push/fuzz=300s, scheduled=120s, manual=input value
           FUZZ_DURATION: >-
@@ -190,6 +191,11 @@ jobs:
           fi
 
       # ── Artifact uploads ──────────────────────────────────────────────────
+      # Clean run      → zero artifacts.
+      # libFuzzer crash → crash artifact (reproducing inputs + log).
+      # Startup failure → diagnostic log (fuzzer exited non-zero, no crash files written;
+      #                   happens for import errors, NameError at module level, etc.).
+      # No-coverage     → diagnostic log (to inspect INFO: Instrumenting… lines).
       - name: Upload crash artifacts
         if: steps.crash_check.outputs.crashes_found == 'true'
         id: upload_crashes
@@ -205,39 +211,39 @@ jobs:
           if-no-files-found: warn
           retention-days: 90
 
-      - name: Upload fuzzer output log (always)
-        if: always()
+      # Upload the log when useful for diagnosis (startup failure or no-coverage).
+      # libFuzzer crash already bundles the log in the crash artifact above.
+      - name: Upload diagnostic log
+        if: >-
+          ${{
+            always() && (
+              steps.crash_check.outputs.no_coverage == 'true' ||
+              (steps.run_fuzzer.conclusion == 'failure' &&
+               steps.crash_check.outputs.crashes_found != 'true')
+            )
+          }}
+        id: upload_log_diagnostic
         uses: actions/upload-artifact@v4 # TODO: pin to commit SHA
         with:
           name: log-${{ matrix.harness }}-${{ github.run_id }}
           path: fuzz_output_${{ matrix.harness }}.txt
-          if-no-files-found: ignore
-          retention-days: 7
-
-      # ── Corpus cache save ─────────────────────────────────────────────────
-      # Upload the corpus as an artifact for optional manual inspection or
-      # future seeding.  Not auto-restored — each run starts cold.
-      - name: Upload expanded corpus
-        if: always()
-        uses: actions/upload-artifact@v4 # TODO: pin to commit SHA
-        with:
-          name: corpus-${{ matrix.harness }}-${{ github.run_id }}
-          path: tests/fuzz/corpus/${{ matrix.harness }}/
-          if-no-files-found: ignore
-          retention-days: 3
+          if-no-files-found: warn
+          retention-days: 14
 
       # ── Job summary ───────────────────────────────────────────────────────
       # Only writes actionable entries:
       #   ✅  one-liner for a clean run
-      #   WARNING  libFuzzer "no interesting inputs" → 3-point checklist
-      #   CAUTION  crash artifact found → link to reproducing input
+      #   CAUTION  libFuzzer crash → artifact link
+      #   CAUTION  startup failure (non-zero exit, no crash files) → log link
+      #   WARNING  no interesting inputs → 3-point instrumentation checklist
       - name: Write job summary
         if: always()
         env:
           CRASHES_FOUND:       ${{ steps.crash_check.outputs.crashes_found }}
           NO_COVERAGE:         ${{ steps.crash_check.outputs.no_coverage }}
+          FUZZER_CONCLUSION:   ${{ steps.run_fuzzer.conclusion }}
           CRASH_ARTIFACT_ID:   ${{ steps.upload_crashes.outputs.artifact-id }}
-          LOG_ARTIFACT_ID:     ${{ steps.upload_log_nocov.outputs.artifact-id }}
+          LOG_ARTIFACT_ID:     ${{ steps.upload_log_diagnostic.outputs.artifact-id }}
         run: |
           LOG="fuzz_output_${{ matrix.harness }}.txt"
           new_units="-"
@@ -254,11 +260,19 @@ jobs:
               if [ -n "${CRASH_ARTIFACT_ID}" ]; then
                 echo "> Crash inputs + traceback: \`crashes-${{ matrix.harness }}-${{ github.run_id }}\`"
               else
-                echo "> Crash files detected but not uploaded — check the job log."
+                echo "> Crash files detected but upload failed — check the job log."
+              fi
+            elif [ "${FUZZER_CONCLUSION}" == "failure" ]; then
+              echo "> [!CAUTION]"
+              echo "> **fuzz / ${{ matrix.harness }}** — fuzzer exited non-zero but wrote no crash files."
+              echo "> This is a **startup failure**: the harness crashed before libFuzzer initialised"
+              echo "> (common causes: ImportError, NameError, SyntaxError at module level)."
+              if [ -n "${LOG_ARTIFACT_ID}" ]; then
+                echo "> Log: \`log-${{ matrix.harness }}-${{ github.run_id }}\`"
               fi
             elif [ ! -f "${LOG}" ]; then
               echo "> [!WARNING]"
-              echo "> **fuzz / ${{ matrix.harness }}** — log file missing; fuzzer failed to start."
+              echo "> **fuzz / ${{ matrix.harness }}** — log file missing; runner may have timed out."
             elif [ "${NO_COVERAGE}" == "true" ]; then
               echo "> [!WARNING]"
               echo "> **fuzz / ${{ matrix.harness }}** — ran ${exec_per_s} exec/s but **no input increased code coverage**."
@@ -287,9 +301,15 @@ jobs:
             fi
           } >> "${GITHUB_STEP_SUMMARY}"
 
-      # ── Fail the job if crashes were found ────────────────────────────────
-      - name: Fail on crashes
-        if: steps.crash_check.outputs.crashes_found == 'true'
+      # ── Fail the job ──────────────────────────────────────────────────────
+      # Fails for both libFuzzer crashes (crash files written) and startup
+      # failures (fuzzer exited non-zero, no crash files).
+      - name: Fail on crashes or startup failure
+        if: ${{ always() && (steps.run_fuzzer.conclusion == 'failure' || steps.crash_check.outputs.crashes_found == 'true') }}
         run: |
-          echo "::error::Crashes detected in ${{ matrix.harness }} — see crash artifacts"
+          if [ "${{ steps.crash_check.outputs.crashes_found }}" == "true" ]; then
+            echo "::error::Crashes detected in ${{ matrix.harness }} — see crash artifacts"
+          else
+            echo "::error::Fuzzer exited non-zero without crash files in ${{ matrix.harness }} — startup failure, see diagnostic log"
+          fi
           exit 1
