@@ -1,18 +1,4 @@
-"""Fuzz harness: ResizeSmolVLA (FT-8).
-
-ResizeSmolVLA is a separate preprocessor from ResizePreprocessor: it uses
-numpy-only letterbox padding and normalises pixel values to [-1, 1] while
-also emitting an IMAGE_MASKS boolean tensor.  The two preprocessors share
-no code path, so this harness is distinct from fuzz_resize_preprocessor.py.
-
-Invariants asserted
--------------------
-- No Python crash (segfault, infinite loop, unhandled exception).
-- When a non-empty IMAGES output is produced, dtype is float32.
-- Pixel values in the IMAGES output are in [-1, 1].
-- IMAGE_MASKS output is a boolean (or bool-compatible) array.
-- ValueError is the only acceptable exception for unsupported dtypes.
-"""
+"""Fuzz ResizeSmolVLA — IMAGES output must be float32 in [-1, 1]; IMAGE_MASKS must be bool-compatible."""
 from __future__ import annotations
 
 import os

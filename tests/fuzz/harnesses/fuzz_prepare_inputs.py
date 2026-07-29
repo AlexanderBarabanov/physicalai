@@ -1,33 +1,8 @@
-"""Fuzz harness: InferenceModel._prepare_inputs() dot-key collision (FT-17).
+"""Fuzz _prepare_inputs — dot-key collision consistency, filtering correctness, and no crashes.
 
-_prepare_inputs() flattens nested input dicts using dot notation *one level
-deep* then filters to adapter.input_names.  When the caller supplies BOTH a
-literal flat key ``"obs.image"`` AND a nested dict ``{"obs": {"image": x}}``
-in the same call, both produce the same flattened key.  The last writer wins
-silently — no KeyError, no warning.
-
-This is a physical-AI safety issue: an attacker who controls the obs dict
-structure can silently substitute a different tensor for an expected model
-input, producing actions calibrated for the wrong observation.
-
-Sub-targets
------------
-  A — Determinism: given two dicts that differ only in insertion order of a
-      colliding pair, _prepare_inputs must choose one of them consistently
-      (either always flat-key-wins or always nested-key-wins for the same
-      collision pattern).
-  B — No crash: arbitrary unicode key names, nested vs flat, extra keys,
-      empty dicts, arrays of various shapes.
-  C — Filtering: when expected_keys is non-empty, output contains exactly
-      those keys (no more, no fewer) — or raises KeyError for missing keys.
-
-Invariants asserted
--------------------
-- No Python crash for any input.
-- Output values for a key come from the input (not fabricated).
-- When both flat and nested paths collide on a key, the result is consistent
-  across equivalent inputs differing only in dict ordering.
-- With expected_keys=['k'], output has exactly one key 'k'.
+When a flat key "obs.image" and a nested dict {"obs": {"image": x}} are both present,
+the collision winner must be deterministic. This is a safety issue: an attacker
+controlling the obs dict structure could silently substitute the wrong tensor.
 """
 from __future__ import annotations
 

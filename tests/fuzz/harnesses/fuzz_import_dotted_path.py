@@ -1,22 +1,5 @@
-"""Fuzz harness: import_dotted_path() (FT-16).
-
-Tests that the resolution loop handles arbitrary dotted strings without
-crashing Python.
-
-Input strategy
---------------
-To avoid importing unknown third-party modules (which could have side
-effects), all fuzz-generated strings are prefixed with one of a small
-set of known-safe module roots.  The suffix is fuzz-derived, exercising
-the getattr-chain walk and the no-valid-prefix error path.
-
-Invariants asserted
--------------------
-- Strings without a dot raise ValueError.
-- Non-importable strings raise ValueError.
-- The returned object (when the call succeeds) is accessible; no crash.
-- For known-non-type suffixes (e.g. "os.path.join") a subsequent
-  isinstance(obj, type) check returns False — not a crash.
+"""Fuzz import_dotted_path — arbitrary dotted strings must not crash Python;
+strings without a dot must raise ValueError.
 """
 from __future__ import annotations
 
@@ -27,8 +10,7 @@ import atheris
 with atheris.instrument_imports():
     from physicalai.inference._importing import import_dotted_path
 
-# Safe module roots — all are part of the Python standard library or
-# physicalai itself.  We fuzz the suffix to exercise various getattr chains.
+# Fuzz only known-safe roots to avoid module-level side effects from arbitrary imports
 _SAFE_ROOTS = [
     "physicalai.inference.manifest",
     "physicalai.inference.runners",

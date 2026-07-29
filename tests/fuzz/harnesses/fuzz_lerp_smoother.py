@@ -1,18 +1,5 @@
-"""Fuzz harness: LerpSmoother.merge() (FT-11).
-
-Sub-targets
------------
-  A — Matching action_dim: asserts output is 2-D float32 with correct dims.
-  B — Mismatching action_dim: asserts ValueError is raised.
-  C — Non-2D inputs: asserts ValueError is raised.
-  D — Empty remaining: asserts output equals incoming (cast to float32).
-
-Invariants asserted
--------------------
-- Output is always 2-D float32.
-- Output action_dim == incoming.shape[1].
-- ValueError raised for shape violations (different cols, non-2D).
-- LerpSmoother(empty_remaining, x) == ReplaceSmoother(empty_remaining, x).
+"""Fuzz LerpSmoother.merge — output always 2-D float32; ValueError for shape violations;
+empty remaining must equal ReplaceSmoother (differential check).
 """
 from __future__ import annotations
 
@@ -42,7 +29,6 @@ def test_one_input(data: bytes) -> None:
     sub = fdp.ConsumeIntInRange(0, 3)
 
     if sub == 0:
-        # A: matching dims
         remaining = make_2d_float_array(fdp, max_rows=32, max_cols=16)
         incoming = make_2d_same_cols(fdp, remaining.shape[1], max_rows=32)
 
@@ -59,9 +45,7 @@ def test_one_input(data: bytes) -> None:
             )
 
     elif sub == 1:
-        # B: mismatching dims → ValueError expected
         remaining = make_2d_float_array(fdp, max_rows=16, max_cols=16)
-        # Force different cols
         mismatch_cols = remaining.shape[1] + fdp.ConsumeIntInRange(1, 8)
         incoming = make_2d_same_cols(fdp, mismatch_cols, max_rows=16)
         try:
@@ -76,11 +60,10 @@ def test_one_input(data: bytes) -> None:
             )
 
     elif sub == 2:
-        # C: non-2D inputs → ValueError expected
         ndim = fdp.ConsumeIntInRange(1, 4)
         shape = tuple(fdp.ConsumeIntInRange(1, 8) for _ in range(ndim))
         if ndim == 2:  # noqa: PLR2004
-            return  # skip — would be valid
+            return
         arr = np.zeros(shape, dtype=np.float32)
         try:
             lerp.merge(arr, arr)
@@ -89,7 +72,7 @@ def test_one_input(data: bytes) -> None:
         raise AssertionError(f"Expected ValueError for {ndim}D input, got none")
 
     else:
-        # D: empty remaining → output == incoming (differential with Replace)
+        # Empty remaining must behave identically to ReplaceSmoother
         cols = fdp.ConsumeIntInRange(0, 16)
         incoming = make_2d_same_cols(fdp, cols, max_rows=32)
         empty = np.zeros((0, cols), dtype=np.float32)

@@ -1,12 +1,5 @@
-"""Fuzz harness: StatsNormalizer (FT-5).
-
-Invariants asserted
--------------------
-- No Python crash for arbitrary array shapes and stat values (inf, nan,
-  negative std, inverted quantiles, zero-dim arrays).
-- Keys NOT listed in ``features`` pass through the normalizer unchanged
-  (value identity, not just key presence).
-- If mode=="identity", all values pass through unchanged regardless of stats.
+"""Fuzz StatsNormalizer — all four modes, extreme stat values (inf, nan, negative std),
+arbitrary array shapes, passthrough-key preservation, and NaN propagation.
 """
 from __future__ import annotations
 
@@ -43,7 +36,7 @@ def test_one_input(data: bytes) -> None:
 
     inputs = {feature_name: arr, other_key: other_arr}
 
-    # Snapshot whether stats contain NaN for the propagation oracle.
+    # Check whether stats contain NaN (used by the propagation check below)
     stat_has_nan = any(
         not np.all(np.isfinite(v))
         for v in stats.get(feature_name, {}).values()
@@ -56,19 +49,16 @@ def test_one_input(data: bytes) -> None:
     except (ValueError, TypeError, FloatingPointError):
         return
 
-    # Oracle 1: passthrough key must still be present
     assert other_key in outputs, (
         f"StatsNormalizer dropped key {other_key!r} which was not in features"
     )
 
-    # Oracle 2: passthrough value must be identical (not mutated)
     np.testing.assert_array_equal(
         outputs[other_key],
         other_arr,
         err_msg=f"StatsNormalizer modified non-listed key {other_key!r}",
     )
 
-    # Oracle 3: identity mode must pass the target feature through unchanged
     if mode == "identity" and feature_name in outputs:
         np.testing.assert_array_equal(
             outputs[feature_name],
@@ -76,10 +66,8 @@ def test_one_input(data: bytes) -> None:
             err_msg="identity mode should not modify the input array",
         )
 
-    # Oracle 4 (physical AI safety): non-identity mode with NaN/Inf stats applied to
-    # a finite, non-empty input must propagate NaN/Inf rather than silently producing
-    # a plausible-looking finite result.  Silent masking hides corrupted stats from
-    # downstream robot safety checks.
+    # NaN/Inf stats on a finite input must propagate — silent masking would hide
+    # corrupted stats from downstream robot safety checks.
     if (
         mode != "identity"
         and stat_has_nan

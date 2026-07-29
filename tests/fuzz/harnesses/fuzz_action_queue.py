@@ -1,17 +1,5 @@
-"""Fuzz harness: ChunkedActionQueue thread safety (FT-15).
-
-Tests concurrent push_chunk / pop operations with fuzz-derived data.
-
-All chunks are pre-generated before threads start so that the
-FuzzedDataProvider is never accessed from multiple threads simultaneously.
-
-Invariants asserted
--------------------
-- pop() always returns None or a 1-D ndarray.
-- No exception escapes from either thread.
-- offset >= chunk_size produces empty incoming without crashing.
-- Queue remaining count is non-negative after all operations.
-- LerpSmoother and ReplaceSmoother are both exercised.
+"""Fuzz ChunkedActionQueue — concurrent push/pop must not deadlock, crash, or return non-1D arrays.
+Chunks are pre-generated before threads start so FuzzedDataProvider is single-threaded.
 """
 from __future__ import annotations
 

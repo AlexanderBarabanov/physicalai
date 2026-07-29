@@ -1,28 +1,5 @@
-"""Fuzz harness: InferenceModel._detect_backend() (FT-14).
-
-_detect_backend() scans an export directory for files whose extension
-matches a registered adapter and returns the first matching backend name.
-It raises ValueError when no matching file is found.
-
-The sub-targets below cover:
-
-  A — Random file names in a temp dir:
-      Verifies _detect_backend() either raises ValueError or returns a
-      string in adapter_registry.names() — never crashes.
-
-  B — Extension boundary cases:
-      Files whose names are crafted from real adapter extensions with
-      path-traversal, dotted, or empty segments.  Asserts that only a
-      safe return value or ValueError is produced.
-
-  C — Empty directory:
-      Must always raise ValueError.
-
-Invariants asserted
--------------------
-- No Python crash for any directory contents.
-- Return value, if any, is a registered backend name.
-- Empty directory always raises ValueError.
+"""Fuzz _detect_backend — random file names in a temp dir must either raise ValueError
+or return a registered backend name; empty dir must always raise ValueError.
 """
 from __future__ import annotations
 
@@ -45,10 +22,8 @@ def _call_detect_backend(export_dir: Path) -> str:
     return InferenceModel._detect_backend(mock)  # type: ignore[arg-type]
 
 
-# All registered backend names — returned value must be one of these.
+# Registered backends and extensions — used to validate return values and seed file names
 _REGISTERED_BACKENDS: frozenset[str] = frozenset(adapter_registry.names())
-
-# All registered extensions — used to seed realistic file names.
 _ALL_EXTENSIONS: list[str] = [
     ext
     for name in adapter_registry.names()

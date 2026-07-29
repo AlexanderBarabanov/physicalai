@@ -1,12 +1,4 @@
-"""Fuzz harness: ActionChunkTrimmer (FT-10).
-
-Invariants asserted
--------------------
-- Output action's second dimension (time steps) ≤ n_action_steps.
-- 2-D action arrays (no temporal axis) pass through unchanged.
-- Non-"action" keys pass through unchanged.
-- KeyError when "action" is absent from outputs (expected; not a crash).
-"""
+"""Fuzz ActionChunkTrimmer — 3-D action output must be trimmed to n_action_steps; other keys pass through unchanged."""
 from __future__ import annotations
 
 import os
@@ -34,7 +26,6 @@ def test_one_input(data: bytes) -> None:
 
     trimmer = ActionChunkTrimmer(n_action_steps=n_action_steps)
 
-    # Build an outputs dict that may or may not have an "action" key
     include_action = fdp.ConsumeBool()
     action_ndim = fdp.ConsumeIntInRange(2, 3)  # 2-D or 3-D (with temporal axis)
     other_key = "extra_output"
@@ -61,17 +52,14 @@ def test_one_input(data: bytes) -> None:
     try:
         result = trimmer(dict(outputs))
     except KeyError:
-        # "action" key absent — known, expected behaviour
-        return
+        return  # expected when no "action" key
 
-    # Oracle 1: if action was present in input and is 3-D, output dim-1 ≤ n_action_steps
     if include_action and ACTION in result and result[ACTION].ndim == 3:  # noqa: PLR2004
         assert result[ACTION].shape[1] <= n_action_steps, (
             f"ActionChunkTrimmer did not trim: shape={result[ACTION].shape}, "
             f"n_action_steps={n_action_steps}"
         )
 
-    # Oracle 2: passthrough key must be present and unmodified
     assert other_key in result, f"ActionChunkTrimmer dropped key {other_key!r}"
     np.testing.assert_array_equal(
         result[other_key],

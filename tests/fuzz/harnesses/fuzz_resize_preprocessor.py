@@ -1,18 +1,5 @@
-"""Fuzz harness: ResizePreprocessor (FT-7).
-
-Exercises _resize_with_ar_pad with:
-- Zero spatial dimensions  (triggers division by zero in scale ratio)
-- Batch dimension = 0
-- Channels-first and channels-last layouts
-- uint8 and float32 dtypes
-- Three image key presentations: flat ndarray, nested dict, dotted key
-- Extreme target resolutions (1×1, large)
-
-Invariants asserted
--------------------
-- No unhandled Python crash.
-- When a non-empty output is produced, dtype is float32.
-- When a 4-D output is produced, it is channels-first (B, C, H, W).
+"""Fuzz ResizePreprocessor — all image key presentations, zero spatial dims,
+channels-first/last layouts, and extreme resolutions. Output must be float32 channels-first.
 """
 from __future__ import annotations
 
@@ -37,8 +24,7 @@ def test_one_input(data: bytes) -> None:
 
     fdp = atheris.FuzzedDataProvider(data)
 
-    # Target resolution — clamped to [1, 512] to avoid OOM but allows extremes
-    target_h = fdp.ConsumeIntInRange(1, 512)
+    target_h = fdp.ConsumeIntInRange(1, 512)  # clamped to avoid OOM while still testing extremes
     target_w = fdp.ConsumeIntInRange(1, 512)
     mode = fdp.PickValueInList(["stretch", "letterbox"])
     pad_value = float(fdp.ConsumeFloat())
@@ -54,7 +40,7 @@ def test_one_input(data: bytes) -> None:
 
     img = make_image_array(fdp, max_spatial=64)
 
-    # Three different ways to present image data to the preprocessor
+    # Three input presentation styles (flat array, nested dict, dotted key)
     presentation = fdp.ConsumeIntInRange(0, 2)
     if presentation == 0:
         inputs: dict = {IMAGES: img}

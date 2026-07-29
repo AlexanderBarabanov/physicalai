@@ -1,19 +1,7 @@
-"""Fuzz harness: Manifest JSON parsing (FT-1).
+"""Fuzz Manifest.load() — JSON parsing and Pydantic validators.
 
-Covers two code paths:
-
-  Path A — raw JSON bytes → json.loads → Manifest.model_validate
-           (exercises the JSON decoder and all Pydantic field validators)
-
-  Path B — structured dict with fuzz-derived values
-           (reaches validators directly: negative shape dims, huge n_obs_steps,
-            missing/extra keys, empty strings, surrogate-free unicode)
-
-Invariants asserted by this harness
-------------------------------------
-- No Python crash (segfault, stack overflow, infinite loop).
-- Only ValidationError, ValueError, or json.JSONDecodeError may be raised.
-- Extreme integers in shape / n_obs_steps do not escape the parser.
+Path A: raw JSON bytes through json.loads.
+Path B: structured dict with extreme values (negative dims, huge ints, missing/extra keys).
 """
 from __future__ import annotations
 
@@ -60,8 +48,7 @@ def _path_structured(fdp: atheris.FuzzedDataProvider) -> None:
             "source": {"repo_id": _s(64), "class_path": _s(64)},
         },
         "model": {
-            # Intentionally unclamped: tests that negative / huge values are caught.
-            # ConsumeInt(64) gives a full 64-bit signed range; (8) was too narrow.
+            # n_obs_steps: unclamped 64-bit range to catch missing validation
             "n_obs_steps": fdp.ConsumeInt(64),
             "runner": _component() if fdp.ConsumeBool() else None,
             "artifacts": {_s(8): _s(32) for _ in range(fdp.ConsumeIntInRange(0, 4))},
@@ -73,7 +60,6 @@ def _path_structured(fdp: atheris.FuzzedDataProvider) -> None:
                 {
                     "name": _s(8),
                     "state": {
-                        # Negative dims should be caught by _shape_must_be_positive
                         "shape": [fdp.ConsumeInt(4) for _ in range(fdp.ConsumeIntInRange(0, 6))],
                         "dtype": _s(8),
                         "order": [_s(8) for _ in range(fdp.ConsumeIntInRange(0, 6))],
@@ -88,7 +74,6 @@ def _path_structured(fdp: atheris.FuzzedDataProvider) -> None:
             "cameras": [
                 {
                     "name": _s(8),
-                    # CameraSpec requires exactly 3 elements when non-empty
                     "shape": [fdp.ConsumeInt(4) for _ in range(fdp.ConsumeIntInRange(0, 6))],
                     "dtype": _s(8),
                 }

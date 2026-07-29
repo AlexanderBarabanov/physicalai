@@ -1,11 +1,5 @@
-"""Fuzz harness: StatsDenormalizer (FT-6).
-
-Invariants asserted
--------------------
-- No Python crash for arbitrary array shapes and stat values.
-- Keys NOT listed in ``features`` pass through unchanged.
-- Differential oracle: normalize(denormalize(x)) ≈ x for well-conditioned
-  stats (skipped when stats contain inf/nan or zero-width denominators).
+"""Fuzz StatsDenormalizer — passthrough-key preservation, NaN propagation,
+and normalize(denormalize(x)) ≈ x round-trip for well-conditioned stats.
 """
 from __future__ import annotations
 
@@ -43,7 +37,7 @@ def test_one_input(data: bytes) -> None:
 
     outputs = {feature_name: arr, other_key: other_arr}
 
-    # Snapshot whether stats contain NaN for the propagation oracle.
+    # Check whether stats contain NaN (used by the propagation check below)
     stat_has_nan = any(
         not np.all(np.isfinite(v))
         for v in stats.get(feature_name, {}).values()
@@ -56,7 +50,7 @@ def test_one_input(data: bytes) -> None:
     except (ValueError, TypeError, FloatingPointError):
         return
 
-    # Oracle 0 (physical AI safety): NaN/Inf stats on finite input must propagate.
+    # NaN/Inf stats on a finite input must propagate downstream
     if (
         mode != "identity"
         and stat_has_nan
@@ -70,7 +64,6 @@ def test_one_input(data: bytes) -> None:
             f"(mode={mode!r}).  NaN/Inf must propagate to be detectable downstream."
         )
 
-    # Oracle 1: passthrough key must still be present and unmodified
     assert other_key in result, (
         f"StatsDenormalizer dropped passthrough key {other_key!r}"
     )
@@ -80,8 +73,7 @@ def test_one_input(data: bytes) -> None:
         err_msg=f"StatsDenormalizer modified non-listed key {other_key!r}",
     )
 
-    # Oracle 2 (differential): norm(denorm(x)) ≈ x for well-conditioned stats
-    # Only run when the stats are finite and results are finite
+    # Round-trip check: normalize(denormalize(x)) ≈ x for well-conditioned stats
     if feature_name in result and np.all(np.isfinite(result[feature_name])):
         for stat_vals in stats.get(feature_name, {}).values():
             if not np.all(np.isfinite(stat_vals)):
