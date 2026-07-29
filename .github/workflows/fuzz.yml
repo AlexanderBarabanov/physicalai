@@ -197,7 +197,7 @@ jobs:
       #                   happens for import errors, NameError at module level, etc.).
       # No-coverage     → diagnostic log (to inspect INFO: Instrumenting… lines).
       - name: Upload crash artifacts
-        if: steps.crash_check.outputs.crashes_found == 'true'
+        if: ${{ always() && steps.crash_check.outputs.crashes_found == 'true' }}
         id: upload_crashes
         uses: actions/upload-artifact@v4 # TODO: pin to commit SHA
         with:
