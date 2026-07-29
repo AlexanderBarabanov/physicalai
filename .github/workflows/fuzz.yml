@@ -37,8 +37,6 @@ jobs:
           # Array processing pipeline
           - harness: stats_normalizer
             seed_dir: ""
-          - harness: stats_denormalizer
-            seed_dir: ""
           - harness: resize_preprocessor
             seed_dir: ""
           - harness: action_normalizer
