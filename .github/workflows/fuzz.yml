@@ -179,9 +179,20 @@ jobs:
             echo "crashes_found=false" >> "$GITHUB_OUTPUT"
           fi
 
+          # Detect coverage stall: libFuzzer prints this when no input increased
+          # code coverage, which means the target is not instrumented or every
+          # input is rejected before reaching meaningful code.
+          LOG="fuzz_output_${{ matrix.harness }}.txt"
+          if [ -f "${LOG}" ] && grep -q "no interesting inputs were found" "${LOG}"; then
+            echo "no_coverage=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "no_coverage=false" >> "$GITHUB_OUTPUT"
+          fi
+
       # ── Artifact uploads ──────────────────────────────────────────────────
       - name: Upload crash artifacts
         if: steps.crash_check.outputs.crashes_found == 'true'
+        id: upload_crashes
         uses: actions/upload-artifact@v4 # TODO: pin to commit SHA
         with:
           name: crashes-${{ matrix.harness }}-${{ github.run_id }}
@@ -191,7 +202,7 @@ jobs:
             oom-*
             slow-unit-*
             fuzz_output_${{ matrix.harness }}.txt
-          if-no-files-found: ignore
+          if-no-files-found: warn
           retention-days: 90
 
       - name: Upload fuzzer output log (always)
@@ -218,38 +229,59 @@ jobs:
       # ── Job summary ───────────────────────────────────────────────────────
       # Only writes actionable entries:
       #   ✅  one-liner for a clean run
-      #   WARNING  libFuzzer "no interesting inputs" → harness not reaching target code
+      #   WARNING  libFuzzer "no interesting inputs" → 3-point checklist
       #   CAUTION  crash artifact found → link to reproducing input
       - name: Write job summary
         if: always()
         env:
-          CRASHES_FOUND: ${{ steps.crash_check.outputs.crashes_found }}
+          CRASHES_FOUND:       ${{ steps.crash_check.outputs.crashes_found }}
+          NO_COVERAGE:         ${{ steps.crash_check.outputs.no_coverage }}
+          CRASH_ARTIFACT_ID:   ${{ steps.upload_crashes.outputs.artifact-id }}
+          LOG_ARTIFACT_ID:     ${{ steps.upload_log_nocov.outputs.artifact-id }}
         run: |
           LOG="fuzz_output_${{ matrix.harness }}.txt"
           new_units="-"
           exec_per_s="-"
-          no_coverage=""
           if [ -f "${LOG}" ]; then
-            new_units=$(awk '/stat::new_units_added/{print $NF}'      "${LOG}")
-            exec_per_s=$(awk '/stat::average_exec_per_sec/{print $NF}' "${LOG}")
-            # libFuzzer emits this when instrumentation is missing or every input
-            # is rejected before reaching meaningful code — actionable regardless
-            # of whether a corpus was used.
-            grep -q "no interesting inputs were found" "${LOG}" && no_coverage="true"
+            new_units=$(awk '/stat::new_units_added/{print $NF}'       "${LOG}")
+            exec_per_s=$(awk '/stat::average_exec_per_sec/{print $NF}'  "${LOG}")
           fi
 
           {
             if [ "${CRASHES_FOUND}" == "true" ]; then
               echo "> [!CAUTION]"
               echo "> **fuzz / ${{ matrix.harness }}** — crashes detected."
-              echo "> Download the \`crashes-${{ matrix.harness }}-${{ github.run_id }}\` artifact for reproducing inputs."
+              if [ -n "${CRASH_ARTIFACT_ID}" ]; then
+                echo "> Crash inputs + traceback: \`crashes-${{ matrix.harness }}-${{ github.run_id }}\`"
+              else
+                echo "> Crash files detected but not uploaded — check the job log."
+              fi
             elif [ ! -f "${LOG}" ]; then
               echo "> [!WARNING]"
-              echo "> **fuzz / ${{ matrix.harness }}** — log file missing; fuzzer may have failed to start."
-            elif [ -n "${no_coverage}" ]; then
+              echo "> **fuzz / ${{ matrix.harness }}** — log file missing; fuzzer failed to start."
+            elif [ "${NO_COVERAGE}" == "true" ]; then
               echo "> [!WARNING]"
-              echo "> **fuzz / ${{ matrix.harness }}** — libFuzzer found no interesting inputs (${exec_per_s} exec/s)."
-              echo "> Verify \`atheris.instrument_imports()\` wraps the target module, or add seed inputs."
+              echo "> **fuzz / ${{ matrix.harness }}** — ran ${exec_per_s} exec/s but **no input increased code coverage**."
+              echo "> libFuzzer's \"interesting input\" = any byte sequence that triggers a new code path."
+              echo "> Zero such inputs means the fuzzer is not reaching (or not seeing) the target code."
+              echo ">"
+              echo "> **1. Check instrumentation** — open the log and look for"
+              echo "> \`INFO: Instrumenting physicalai.inference…\` or the relevant module."
+              echo "> If the target is absent, its import is outside \`with atheris.instrument_imports():\`."
+              echo "> Move it inside that block in the harness."
+              echo ">"
+              echo "> **2. Check early returns** — if every generated input hits the"
+              echo "> \`if len(data) < N: return\` guard or an exception is caught before"
+              echo "> calling the target, no new path is recorded."
+              echo "> Lower the minimum-length guard or widen the reaching code path."
+              echo ">"
+              echo "> **3. Add seeds** — if checks 1–2 are fine but the target needs"
+              echo "> structurally valid inputs (e.g. a manifest, a binary array header),"
+              echo "> add small representative files to \`tests/fuzz/seeds/${{ matrix.harness }}/\`."
+              if [ -n "${LOG_ARTIFACT_ID}" ]; then
+                echo ">"
+                echo "> Log with instrumented-module list: \`log-${{ matrix.harness }}-${{ github.run_id }}\`"
+              fi
             else
               echo "✅ **fuzz / ${{ matrix.harness }}** — ${new_units} new corpus inputs · ${exec_per_s} exec/s"
             fi
