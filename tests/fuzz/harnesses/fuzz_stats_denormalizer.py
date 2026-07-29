@@ -23,6 +23,16 @@ _MODES = ["mean_std", "min_max", "quantiles", "identity"]
 # dominates and the round-trip invariant no longer holds numerically.
 _MIN_RANGE = 1e-3
 
+# Upper bound on derived ranges / std: if the float64 value exceeds float32 max,
+# the float32 arithmetic (tensor * range) will overflow even though the individual
+# stat values are both finite.  Check in float64 to avoid float32 overflow here.
+_FLOAT32_MAX = np.float64(np.finfo(np.float32).max)
+
+# float32 subnormal threshold: values below np.finfo(np.float32).tiny are flushed
+# to the same result as 0 when added to 1.0, so denorm(subnormal) == denorm(0) and
+# the round-trip norm(denorm(x)) cannot reproduce the original value.
+_FLOAT32_TINY = np.float64(np.finfo(np.float32).tiny)
+
 
 def _is_roundtrip_conditioned(mode: str, stats: dict, feature_name: str) -> bool:
     """Return True only when the round-trip normalize(denormalize(x)) ≈ x is
@@ -50,21 +60,34 @@ def _is_roundtrip_conditioned(mode: str, stats: dict, feature_name: str) -> bool
         std = s.get("std")
         if std is None:
             return False
-        return bool(np.all(np.abs(std.astype(np.float64)) >= _MIN_RANGE))
+        abs_std = np.abs(std.astype(np.float64))
+        # std must be large enough that _EPS doesn't dominate, and small enough
+        # that tensor * std doesn't overflow in float32.
+        return bool(np.all(abs_std >= _MIN_RANGE) and np.all(abs_std <= _FLOAT32_MAX))
 
     if mode == "min_max":
         mn, mx = s.get("min"), s.get("max")
         if mn is None or mx is None:
             return False
         rng = mx.astype(np.float64) - mn.astype(np.float64)
-        return bool(np.all(np.isfinite(rng)) and np.all(np.abs(rng) >= _MIN_RANGE))
+        # rng must be finite in float64 AND fit in float32, otherwise
+        # (tensor + 1) * rng overflows in the actual float32 computation.
+        return bool(
+            np.all(np.isfinite(rng))
+            and np.all(np.abs(rng) >= _MIN_RANGE)
+            and np.all(np.abs(rng) <= _FLOAT32_MAX)
+        )
 
     if mode == "quantiles":
         q01, q99 = s.get("q01"), s.get("q99")
         if q01 is None or q99 is None:
             return False
         rng = q99.astype(np.float64) - q01.astype(np.float64)
-        return bool(np.all(np.isfinite(rng)) and np.all(np.abs(rng) >= _MIN_RANGE))
+        return bool(
+            np.all(np.isfinite(rng))
+            and np.all(np.abs(rng) >= _MIN_RANGE)
+            and np.all(np.abs(rng) <= _FLOAT32_MAX)
+        )
 
     return True  # identity mode — always a no-op, trivially round-trips
 
@@ -125,9 +148,15 @@ def test_one_input(data: bytes) -> None:
     # Round-trip check: normalize(denormalize(x)) ≈ x for well-conditioned stats.
     # Skip when stats are ill-conditioned: non-finite individual values, float32
     # overflow in derived ranges (max-min, q99-q01), or eps-dominated denominators.
+    # Also skip when the original array contains subnormal float32 values: those
+    # are destroyed by float32 arithmetic (subnormal + 1.0 == 1.0) so the
+    # round-trip can never reproduce them regardless of how good the stats are.
     if feature_name in result and np.all(np.isfinite(result[feature_name])):
         if not _is_roundtrip_conditioned(mode, stats, feature_name):
             return
+        arr_f64 = arr.astype(np.float64)
+        if arr.size > 0 and np.any((arr != 0.0) & (np.abs(arr_f64) < _FLOAT32_TINY)):
+            return  # subnormal inputs cannot survive float32 round-trip arithmetic
 
         try:
             norm = StatsNormalizer(mode=mode, features=[feature_name], stats=stats)
