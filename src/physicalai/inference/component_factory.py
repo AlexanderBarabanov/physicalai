@@ -144,15 +144,15 @@ def resolve_artifact(spec: ComponentSpec, export_dir: Path) -> ComponentSpec:
         return str(candidate)
 
     flat = spec.flat_params
-    if "artifact" in flat and not Path(flat["artifact"]).is_absolute():
+    if "artifact" in flat:
+        # Check both relative and absolute artifact paths.
         new_params = {**flat, "artifact": _resolve_artifact_path(flat["artifact"])}
         return type(spec).model_validate({"type": spec.type, **new_params})
 
     if spec.class_path and "artifact" in spec.init_args:
         artifact = spec.init_args["artifact"]
-        if not Path(artifact).is_absolute():
-            new_init_args = {**spec.init_args, "artifact": _resolve_artifact_path(artifact)}
-            return type(spec).model_validate({"class_path": spec.class_path, "init_args": new_init_args})
+        new_init_args = {**spec.init_args, "artifact": _resolve_artifact_path(artifact)}
+        return type(spec).model_validate({"class_path": spec.class_path, "init_args": new_init_args})
 
     return spec
 
