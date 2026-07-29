@@ -50,51 +50,36 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # Priority 1 — manifest / component instantiation
+          # Manifest / component instantiation
           - harness: manifest
-            priority: 1
             seed_dir: tests/fuzz/seeds/manifest
           - harness: component
-            priority: 1
             seed_dir: ""
-          # Priority 2 — array processing pipeline
+          # Array processing pipeline
           - harness: stats_normalizer
-            priority: 2
             seed_dir: ""
           - harness: stats_denormalizer
-            priority: 2
             seed_dir: ""
           - harness: resize_preprocessor
-            priority: 2
             seed_dir: ""
           - harness: action_normalizer
-            priority: 2
             seed_dir: ""
           - harness: action_chunk_trimmer
-            priority: 2
             seed_dir: ""
           - harness: lerp_smoother
-            priority: 2
             seed_dir: ""
-          # Priority 2 — missing SmolVLA preprocessor (FT-8)
           - harness: resize_smolvla
-            priority: 2
             seed_dir: ""
-          # Priority 3/4 — path handling, runtime, queue
+          # Path handling, runtime, queue
           - harness: policy_name
-            priority: 3
             seed_dir: ""
           - harness: detect_backend
-            priority: 3
             seed_dir: ""
           - harness: prepare_inputs
-            priority: 3
             seed_dir: ""
           - harness: action_queue
-            priority: 4
             seed_dir: ""
           - harness: import_dotted_path
-            priority: 4
             seed_dir: ""
 
     permissions:
@@ -180,22 +165,11 @@ jobs:
             echo "crashes_found=false" >> "$GITHUB_OUTPUT"
           fi
 
-          # Detect coverage stall: libFuzzer prints this when no input increased
-          # code coverage, which means the target is not instrumented or every
-          # input is rejected before reaching meaningful code.
-          LOG="fuzz_output_${{ matrix.harness }}.txt"
-          if [ -f "${LOG}" ] && grep -q "no interesting inputs were found" "${LOG}"; then
-            echo "no_coverage=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "no_coverage=false" >> "$GITHUB_OUTPUT"
-          fi
-
       # ── Artifact uploads ──────────────────────────────────────────────────
       # Clean run      → zero artifacts.
       # libFuzzer crash → crash artifact (reproducing inputs + log).
       # Startup failure → diagnostic log (fuzzer exited non-zero, no crash files written;
       #                   happens for import errors, NameError at module level, etc.).
-      # No-coverage     → diagnostic log (to inspect INFO: Instrumenting… lines).
       - name: Upload crash artifacts
         if: ${{ always() && steps.crash_check.outputs.crashes_found == 'true' }}
         id: upload_crashes
@@ -211,16 +185,14 @@ jobs:
           if-no-files-found: warn
           retention-days: 90
 
-      # Upload the log when useful for diagnosis (startup failure or no-coverage).
+      # Upload the log when useful for diagnosis: startup failure only.
       # libFuzzer crash already bundles the log in the crash artifact above.
       - name: Upload diagnostic log
         if: >-
-          ${{
-            always() && (
-              steps.crash_check.outputs.no_coverage == 'true' ||
-              (steps.run_fuzzer.conclusion == 'failure' &&
-               steps.crash_check.outputs.crashes_found != 'true')
-            )
+          ${{    
+            always() &&
+            steps.crash_check.outputs.crashes_found != 'true' &&
+            steps.run_fuzzer.conclusion == 'failure'
           }}
         id: upload_log_diagnostic
         uses: actions/upload-artifact@v4 # TODO: pin to commit SHA
@@ -231,16 +203,14 @@ jobs:
           retention-days: 14
 
       # ── Job summary ───────────────────────────────────────────────────────
-      # Only writes actionable entries:
-      #   ✅  one-liner for a clean run
+      # Three tiers:
+      #   ✅  clean run
       #   CAUTION  libFuzzer crash → artifact link
       #   CAUTION  startup failure (non-zero exit, no crash files) → log link
-      #   WARNING  no interesting inputs → 3-point instrumentation checklist
       - name: Write job summary
         if: always()
         env:
           CRASHES_FOUND:       ${{ steps.crash_check.outputs.crashes_found }}
-          NO_COVERAGE:         ${{ steps.crash_check.outputs.no_coverage }}
           FUZZER_CONCLUSION:   ${{ steps.run_fuzzer.conclusion }}
           CRASH_ARTIFACT_ID:   ${{ steps.upload_crashes.outputs.artifact-id }}
           LOG_ARTIFACT_ID:     ${{ steps.upload_log_diagnostic.outputs.artifact-id }}
@@ -256,15 +226,15 @@ jobs:
           {
             if [ "${CRASHES_FOUND}" == "true" ]; then
               echo "> [!CAUTION]"
-              echo "> **fuzz / ${{ matrix.harness }}** — crashes detected."
+              echo "> **fuzz / ${{ matrix.harness }}** \u2014 crashes detected."
               if [ -n "${CRASH_ARTIFACT_ID}" ]; then
                 echo "> Crash inputs + traceback: \`crashes-${{ matrix.harness }}-${{ github.run_id }}\`"
               else
-                echo "> Crash files detected but upload failed — check the job log."
+                echo "> Crash files detected but upload failed \u2014 check the job log."
               fi
             elif [ "${FUZZER_CONCLUSION}" == "failure" ]; then
               echo "> [!CAUTION]"
-              echo "> **fuzz / ${{ matrix.harness }}** — fuzzer exited non-zero but wrote no crash files."
+              echo "> **fuzz / ${{ matrix.harness }}** \u2014 fuzzer exited non-zero but wrote no crash files."
               echo "> This is a **startup failure**: the harness crashed before libFuzzer initialised"
               echo "> (common causes: ImportError, NameError, SyntaxError at module level)."
               if [ -n "${LOG_ARTIFACT_ID}" ]; then
@@ -272,32 +242,9 @@ jobs:
               fi
             elif [ ! -f "${LOG}" ]; then
               echo "> [!WARNING]"
-              echo "> **fuzz / ${{ matrix.harness }}** — log file missing; runner may have timed out."
-            elif [ "${NO_COVERAGE}" == "true" ]; then
-              echo "> [!WARNING]"
-              echo "> **fuzz / ${{ matrix.harness }}** — ran ${exec_per_s} exec/s but **no input increased code coverage**."
-              echo "> libFuzzer's \"interesting input\" = any byte sequence that triggers a new code path."
-              echo "> Zero such inputs means the fuzzer is not reaching (or not seeing) the target code."
-              echo ">"
-              echo "> **1. Check instrumentation** — open the log and look for"
-              echo "> \`INFO: Instrumenting physicalai.inference…\` or the relevant module."
-              echo "> If the target is absent, its import is outside \`with atheris.instrument_imports():\`."
-              echo "> Move it inside that block in the harness."
-              echo ">"
-              echo "> **2. Check early returns** — if every generated input hits the"
-              echo "> \`if len(data) < N: return\` guard or an exception is caught before"
-              echo "> calling the target, no new path is recorded."
-              echo "> Lower the minimum-length guard or widen the reaching code path."
-              echo ">"
-              echo "> **3. Add seeds** — if checks 1–2 are fine but the target needs"
-              echo "> structurally valid inputs (e.g. a manifest, a binary array header),"
-              echo "> add small representative files to \`tests/fuzz/seeds/${{ matrix.harness }}/\`."
-              if [ -n "${LOG_ARTIFACT_ID}" ]; then
-                echo ">"
-                echo "> Log with instrumented-module list: \`log-${{ matrix.harness }}-${{ github.run_id }}\`"
-              fi
+              echo "> **fuzz / ${{ matrix.harness }}** \u2014 log file missing; runner may have timed out."
             else
-              echo "✅ **fuzz / ${{ matrix.harness }}** — ${new_units} new corpus inputs · ${exec_per_s} exec/s"
+              echo "\u2705 **fuzz / ${{ matrix.harness }}** \u2014 ${new_units} new corpus inputs \u00b7 ${exec_per_s} exec/s"
             fi
           } >> "${GITHUB_STEP_SUMMARY}"
 
