@@ -201,7 +201,9 @@ enabled = false
 [tool.pytest.ini_options]
 addopts = ["--strict-markers", "--strict-config", "--showlocals", "-ra"]
 testpaths = "tests"
-pythonpath = "src"
+pythonpath = ["src", "tests/fuzz/harnesses"]
+# Prevent pytest from walking into the fuzz harness tree.
+norecursedirs = ["tests/fuzz"]
 markers = [
     "slow: marks tests as slow (deselect with '-m \"not slow\"')",
     "requires_download: marks tests that require downloading external datasets",
