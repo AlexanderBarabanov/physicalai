@@ -215,6 +215,46 @@ jobs:
           if-no-files-found: ignore
           retention-days: 3
 
+      # ── Job summary ───────────────────────────────────────────────────────
+      # Only writes actionable entries:
+      #   ✅  one-liner for a clean run
+      #   WARNING  libFuzzer "no interesting inputs" → harness not reaching target code
+      #   CAUTION  crash artifact found → link to reproducing input
+      - name: Write job summary
+        if: always()
+        env:
+          CRASHES_FOUND: ${{ steps.crash_check.outputs.crashes_found }}
+        run: |
+          LOG="fuzz_output_${{ matrix.harness }}.txt"
+          new_units="-"
+          exec_per_s="-"
+          no_coverage=""
+          if [ -f "${LOG}" ]; then
+            new_units=$(awk '/stat::new_units_added/{print $NF}'      "${LOG}")
+            exec_per_s=$(awk '/stat::average_exec_per_sec/{print $NF}' "${LOG}")
+            # libFuzzer emits this when instrumentation is missing or every input
+            # is rejected before reaching meaningful code — actionable regardless
+            # of whether a corpus was used.
+            grep -q "no interesting inputs were found" "${LOG}" && no_coverage="true"
+          fi
+
+          {
+            if [ "${CRASHES_FOUND}" == "true" ]; then
+              echo "> [!CAUTION]"
+              echo "> **fuzz / ${{ matrix.harness }}** — crashes detected."
+              echo "> Download the \`crashes-${{ matrix.harness }}-${{ github.run_id }}\` artifact for reproducing inputs."
+            elif [ ! -f "${LOG}" ]; then
+              echo "> [!WARNING]"
+              echo "> **fuzz / ${{ matrix.harness }}** — log file missing; fuzzer may have failed to start."
+            elif [ -n "${no_coverage}" ]; then
+              echo "> [!WARNING]"
+              echo "> **fuzz / ${{ matrix.harness }}** — libFuzzer found no interesting inputs (${exec_per_s} exec/s)."
+              echo "> Verify \`atheris.instrument_imports()\` wraps the target module, or add seed inputs."
+            else
+              echo "✅ **fuzz / ${{ matrix.harness }}** — ${new_units} new corpus inputs · ${exec_per_s} exec/s"
+            fi
+          } >> "${GITHUB_STEP_SUMMARY}"
+
       # ── Fail the job if crashes were found ────────────────────────────────
       - name: Fail on crashes
         if: steps.crash_check.outputs.crashes_found == 'true'
