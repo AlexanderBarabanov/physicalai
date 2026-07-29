@@ -4,7 +4,7 @@ name: Fuzz
 
 on:
   schedule:
-    - cron: "0 2 * * 1" # Every Monday at 02:00 UTC
+    - cron: "0 2 * * 1"
   push: # TODO: temporary, remove
     branches:
       - fuzz
@@ -139,14 +139,14 @@ jobs:
           fi
 
       # ── Artifact uploads ──────────────────────────────────────────────────
-      # Clean run      → zero artifacts.
+      # Clean run       → zero artifacts.
       # libFuzzer crash → crash artifact (reproducing inputs + log).
       # Startup failure → diagnostic log (fuzzer exited non-zero, no crash files written;
       #                   happens for import errors, NameError at module level, etc.).
       - name: Upload crash artifacts
         if: ${{ always() && steps.crash_check.outputs.crashes_found == 'true' }}
         id: upload_crashes
-        uses: actions/upload-artifact@v4 # TODO: pin to commit SHA
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: crashes-${{ matrix.harness }}-${{ github.run_id }}
           path: |
@@ -166,7 +166,7 @@ jobs:
             steps.run_fuzzer.conclusion == 'failure'
           }}
         id: upload_log_diagnostic
-        uses: actions/upload-artifact@v4 # TODO: pin to commit SHA
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: log-${{ matrix.harness }}-${{ github.run_id }}
           path: fuzz_output_${{ matrix.harness }}.txt
