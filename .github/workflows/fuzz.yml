@@ -1,32 +1,11 @@
-# Continuous fuzzing for Physical AI Runtime
-#
-# Trigger matrix
-# --------------
-#   schedule        Weekly Monday 02:00 UTC — full campaign (120 s/target default)
-#   workflow_dispatch  Manual run with configurable duration
-#   pull_request    Short smoke run (30 s/target) on inference/runtime changes
-#
-# Each harness runs in its own matrix job so they execute in parallel.
-# Crashes and fuzzer output are uploaded as artifacts.
-# The corpus directory is seeded from tests/fuzz/seeds/ when available;
-# otherwise each run starts cold.  For the 30–120 s budgets used here
-# a cold start loses ~15 s of exploration vs a warm corpus, which is not
-# worth the cache management overhead.
-#
-# Fuzzing duration ladder
-#   pull_request  → 30 s   (quick sanity check, no regression)
-#   scheduled     → 120 s  (weekly campaign)
-#   manual        → value of duration_s input (default 300 s)
-#   push/fuzz     → 300 s  (same as manual default; temporary branch for testing)
+# Fuzzing for Physical AI Runtime
 
 name: Fuzz
 
 on:
   schedule:
     - cron: "0 2 * * 1" # Every Monday at 02:00 UTC
-  # Temporary: push to the fuzz branch triggers a full manual-equivalent run
-  # (300 s/target).  Remove this trigger once testing is complete.
-  push:
+  push: # TODO: temporary, remove
     branches:
       - fuzz
   workflow_dispatch:
@@ -40,12 +19,12 @@ on:
       - "tests/fuzz/**"
       - ".github/workflows/fuzz.yml"
 
-permissions: {} # deny all by default; each job grants only what it needs
+permissions: {}
 
 jobs:
   fuzz:
     name: "fuzz / ${{ matrix.harness }}"
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
@@ -104,9 +83,7 @@ jobs:
       - name: Install project dependencies
         run: uv sync --frozen
 
-      # TODO: move atheris into pyproject.toml [project.optional-dependencies] fuzz
-      #       group and switch to `uv sync --frozen --extra fuzz` so the version
-      #       is lockfile-managed.  Needs `uv lock` refresh after the change.
+      # TODO: move atheris into pyproject.toml
       - name: Install atheris
         run: uv pip install "atheris==3.1.0"
 
@@ -121,7 +98,6 @@ jobs:
       - name: Run fuzzer
         id: run_fuzzer
         env:
-          # Duration ladder: PR=30s, push/fuzz=300s, scheduled=120s, manual=input value
           FUZZ_DURATION: >-
             ${{
               github.event_name == 'pull_request' && '30' ||
@@ -184,8 +160,6 @@ jobs:
           if-no-files-found: warn
           retention-days: 90
 
-      # Upload the log when useful for diagnosis: startup failure only.
-      # libFuzzer crash already bundles the log in the crash artifact above.
       - name: Upload diagnostic log
         if: >-
           ${{    
@@ -202,8 +176,6 @@ jobs:
           retention-days: 14
 
       # ── Fail the job ──────────────────────────────────────────────────────
-      # Fails for both libFuzzer crashes (crash files written) and startup
-      # failures (fuzzer exited non-zero, no crash files).
       - name: Fail on crashes or startup failure
         if: ${{ always() && (steps.run_fuzzer.conclusion == 'failure' || steps.crash_check.outputs.crashes_found == 'true') }}
         run: |
