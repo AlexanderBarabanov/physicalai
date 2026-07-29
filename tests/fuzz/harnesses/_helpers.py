@@ -93,17 +93,32 @@ def make_stats_dict(
     feature_name: str,
     *,
     stat_dim: int | None = None,
+    mode: str | None = None,
 ) -> dict[str, dict[str, np.ndarray]]:
     """Return a pre-loaded stats dict suitable for StatsNormalizer/StatsDenormalizer.
 
     Bypasses safetensors file loading by passing stats directly via the ``stats``
-    constructor kwarg.  The mode (mean_std / min_max / quantiles) is chosen from
-    fuzz data; the stat arrays use fuzz-derived float32 values including edge
+    constructor kwarg.  The stat arrays use fuzz-derived float32 values including edge
     cases (inf, nan, negative std, inverted quantiles).
+
+    Args:
+        fdp: FuzzedDataProvider to consume bytes from.
+        feature_name: Feature key to use in the returned stats dict.
+        stat_dim: Fixed dimension for stat arrays; if None, derived from fuzz data.
+        mode: Normalizer mode (``"mean_std"``, ``"min_max"``, ``"quantiles"``,
+            ``"identity"``).  When provided the returned stat dict has exactly the
+            keys that the corresponding normalizer expects.  When None a mode is
+            picked from fuzz data — only use None when the caller does not pass
+            the mode to the normalizer, otherwise stats and normalizer will be
+            mismatched, causing spurious KeyError crashes.
     """
     dim = stat_dim if stat_dim is not None else fdp.ConsumeIntInRange(1, 16)
-    # Include "identity" — previously missing, causing its code path to never be fuzzed.
-    mode = fdp.PickValueInList(["mean_std", "min_max", "quantiles", "identity"])
+    # Use the caller-supplied mode when available; fall back to fuzz-derived choice.
+    # Callers that pass the same mode to StatsNormalizer MUST also pass it here so
+    # the stat dict has the correct keys and no spurious KeyError is raised.
+    resolved_mode = mode if mode is not None else fdp.PickValueInList(
+        ["mean_std", "min_max", "quantiles", "identity"]
+    )
 
     def _stat() -> np.ndarray:
         n_bytes = dim * 4
@@ -112,11 +127,11 @@ def make_stats_dict(
             raw = raw + b"\x00" * (n_bytes - len(raw))
         return np.frombuffer(raw[:n_bytes], dtype=np.float32).copy()
 
-    if mode == "mean_std":
+    if resolved_mode == "mean_std":
         return {feature_name: {"mean": _stat(), "std": _stat()}}
-    elif mode == "min_max":
+    elif resolved_mode == "min_max":
         return {feature_name: {"min": _stat(), "max": _stat()}}
-    elif mode == "quantiles":
+    elif resolved_mode == "quantiles":
         return {feature_name: {"q01": _stat(), "q99": _stat()}}
     else:  # identity — no stat arrays needed; return an empty stats dict
         return {feature_name: {}}

@@ -35,7 +35,7 @@ def test_one_input(data: bytes) -> None:
     feature_name = fdp.ConsumeUnicodeNoSurrogates(32) or "observation.state"
 
     stat_dim = fdp.ConsumeIntInRange(1, 16)
-    stats = make_stats_dict(fdp, feature_name, stat_dim=stat_dim)
+    stats = make_stats_dict(fdp, feature_name, stat_dim=stat_dim, mode=mode)
 
     arr = make_float_array(fdp, max_ndim=3, max_dim=32)
     other_key = "passthrough_feature"
