@@ -158,12 +158,18 @@ jobs:
         timeout-minutes: 15
 
       # ── Crash detection ───────────────────────────────────────────────────
+      # libFuzzer writes four artifact types to the working directory:
+      #   crash-*      uncaught exception or assert
+      #   timeout-*    single input exceeded -timeout
+      #   oom-*        process exceeded -rss_limit_mb
+      #   slow-unit-*  input exceeded report_slow_units threshold
       - name: Detect crashes
         if: always()
         id: crash_check
         run: |
           mapfile -t crashes < <(find . -maxdepth 1 \
-            \( -name 'crash-*' -o -name 'timeout-*' -o -name 'slow-unit-*' \) \
+            \( -name 'crash-*' -o -name 'timeout-*' \
+               -o -name 'oom-*' -o -name 'slow-unit-*' \) \
             -print)
           if [ ${#crashes[@]} -gt 0 ]; then
             echo "crashes_found=true" >> "$GITHUB_OUTPUT"
@@ -182,6 +188,7 @@ jobs:
           path: |
             crash-*
             timeout-*
+            oom-*
             slow-unit-*
             fuzz_output_${{ matrix.harness }}.txt
           if-no-files-found: ignore

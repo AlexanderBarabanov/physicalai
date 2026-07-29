@@ -193,6 +193,7 @@ def _sub_symlink_bypass(export_dir: str) -> None:
 
 
 
+def test_one_input(data: bytes) -> None:
     if len(data) < 4:
         return
     fdp = atheris.FuzzedDataProvider(data)
@@ -208,7 +209,6 @@ def _sub_symlink_bypass(export_dir: str) -> None:
     else:
         with tempfile.TemporaryDirectory() as export_dir:
             _sub_symlink_bypass(export_dir)
-        _sub_flat_params(fdp)
 
 
 def main() -> None:
