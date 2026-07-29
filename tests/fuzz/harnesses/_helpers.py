@@ -1,8 +1,4 @@
-"""Shared utilities for Physical AI Atheris fuzz harnesses.
-
-All helpers are pure functions — no atheris import — so they can also be
-used in non-fuzz unit tests.
-"""
+"""Shared utilities for Physical AI Atheris fuzz harnesses."""
 from __future__ import annotations
 
 import numpy as np

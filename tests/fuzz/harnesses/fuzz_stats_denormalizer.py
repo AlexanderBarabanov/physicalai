@@ -19,6 +19,55 @@ from _helpers import make_float_array, make_stats_dict
 
 _MODES = ["mean_std", "min_max", "quantiles", "identity"]
 
+# Minimum range magnitude below which eps-stabilisation in StatsNormalizer
+# dominates and the round-trip invariant no longer holds numerically.
+_MIN_RANGE = 1e-3
+
+
+def _is_roundtrip_conditioned(mode: str, stats: dict, feature_name: str) -> bool:
+    """Return True only when the round-trip normalize(denormalize(x)) ≈ x is
+    numerically expected to hold.
+
+    Two failure modes are excluded beyond simple non-finiteness of individual
+    stat arrays:
+
+    1. Float32 overflow in *derived* ranges (e.g. ``max - min`` overflows to
+       ``inf`` even when both ``max`` and ``min`` are individually finite).
+       Detection is done in float64.
+    2. Eps-stabilisation dominates when the denominator is too small.
+       ``StatsNormalizer`` adds ``_EPS`` to prevent division-by-zero; when
+       ``|range| < _MIN_RANGE`` the ``_EPS`` term is no longer negligible and
+       ``normalize(denormalize(x)) ≠ x``.
+    """
+    s = stats.get(feature_name, {})
+
+    # All individual stat arrays must be finite first.
+    for v in s.values():
+        if isinstance(v, np.ndarray) and not np.all(np.isfinite(v)):
+            return False
+
+    if mode == "mean_std":
+        std = s.get("std")
+        if std is None:
+            return False
+        return bool(np.all(np.abs(std.astype(np.float64)) >= _MIN_RANGE))
+
+    if mode == "min_max":
+        mn, mx = s.get("min"), s.get("max")
+        if mn is None or mx is None:
+            return False
+        rng = mx.astype(np.float64) - mn.astype(np.float64)
+        return bool(np.all(np.isfinite(rng)) and np.all(np.abs(rng) >= _MIN_RANGE))
+
+    if mode == "quantiles":
+        q01, q99 = s.get("q01"), s.get("q99")
+        if q01 is None or q99 is None:
+            return False
+        rng = q99.astype(np.float64) - q01.astype(np.float64)
+        return bool(np.all(np.isfinite(rng)) and np.all(np.abs(rng) >= _MIN_RANGE))
+
+    return True  # identity mode — always a no-op, trivially round-trips
+
 
 def test_one_input(data: bytes) -> None:
     if len(data) < 8:
@@ -73,11 +122,12 @@ def test_one_input(data: bytes) -> None:
         err_msg=f"StatsDenormalizer modified non-listed key {other_key!r}",
     )
 
-    # Round-trip check: normalize(denormalize(x)) ≈ x for well-conditioned stats
+    # Round-trip check: normalize(denormalize(x)) ≈ x for well-conditioned stats.
+    # Skip when stats are ill-conditioned: non-finite individual values, float32
+    # overflow in derived ranges (max-min, q99-q01), or eps-dominated denominators.
     if feature_name in result and np.all(np.isfinite(result[feature_name])):
-        for stat_vals in stats.get(feature_name, {}).values():
-            if not np.all(np.isfinite(stat_vals)):
-                return  # ill-conditioned stats; skip round-trip check
+        if not _is_roundtrip_conditioned(mode, stats, feature_name):
+            return
 
         try:
             norm = StatsNormalizer(mode=mode, features=[feature_name], stats=stats)

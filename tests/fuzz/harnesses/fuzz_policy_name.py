@@ -40,10 +40,14 @@ def test_one_input(data: bytes) -> None:
         with tempfile.TemporaryDirectory() as export_dir:
             try:
                 InferenceModel(export_dir, policy_name=name)
-            except ValueError:
-                assert not is_safe, (
-                    f"InferenceModel raised ValueError for safe policy_name {name!r}"
-                )
+            except ValueError as exc:
+                # Only assert when the error is specifically a policy_name rejection.
+                # Other ValueError sources (e.g. _detect_backend finding no model
+                # files in the empty temp dir) must not trigger the safety assertion.
+                if "invalid characters" in str(exc):
+                    assert not is_safe, (
+                        f"InferenceModel raised ValueError for safe policy_name {name!r}"
+                    )
             except (FileNotFoundError, RuntimeError):
                 pass
 
