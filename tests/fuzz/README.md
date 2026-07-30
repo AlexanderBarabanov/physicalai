@@ -11,22 +11,21 @@ The GitHub Actions workflow `.github/workflows/fuzz.yml` runs all harnesses in p
 
 Each row maps a harness file to the component it covers, its input space, and the oracle invariants it checks. Oracle numbers refer to the [Key invariants for fuzzing oracles](#key-invariants-for-fuzzing-oracles) section below.
 
-| Harness                                                                  | Entry Point                                                                  | Input Space                                                                                                                                   | Oracles        |
-| ------------------------------------------------------------------------ | ---------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- | -------------- |
-| [`fuzz_manifest.py`](harnesses/fuzz_manifest.py)                         | `Manifest.load(path)`                                                        | Arbitrary JSON bytes (valid and malformed); extreme values in `shape`, `n_obs_steps`, unknown keys                                            | I-3            |
-| [`fuzz_component.py`](harnesses/fuzz_component.py)                       | `instantiate_component(spec)`, `resolve_artifact(spec, export_dir)`          | Mutated `class_path` strings; crafted `artifact` paths (`../`, absolute, symlink-like); deep nested `init_args`; arbitrary `flat_params` keys | I-1, I-4, I-5  |
-| [`fuzz_import_dotted_path.py`](harnesses/fuzz_import_dotted_path.py)     | `import_dotted_path(path)`                                                   | Arbitrary dotted strings (relative imports, no-dot strings, known-safe module roots + fuzz suffix)                                            | I-6            |
-| [`fuzz_policy_name.py`](harnesses/fuzz_policy_name.py)                   | `_is_safe_policy_name(name)`, `InferenceModel(export_dir, policy_name=name)` | Arbitrary Unicode strings; strings that pass and fail the safety regex                                                                        | I-2            |
-| [`fuzz_detect_backend.py`](harnesses/fuzz_detect_backend.py)             | `InferenceModel._detect_backend()`                                           | Export directories populated with arbitrary filename extensions and combinations                                                              | I-6            |
-| [`fuzz_prepare_inputs.py`](harnesses/fuzz_prepare_inputs.py)             | `InferenceModel._prepare_inputs(inputs)`                                     | Flat dicts, nested dicts, mixed flat+nested collisions, arbitrary key names                                                                   | I-7            |
-| [`fuzz_stats_normalizer.py`](harnesses/fuzz_stats_normalizer.py)         | `StatsNormalizer.__call__(inputs)`                                           | Arbitrary shaped float32 arrays; extreme stat values (inf, nan, zero std, inverted quantiles); all four modes                                 | I-8, I-9       |
-| [`fuzz_stats_denormalizer.py`](harnesses/fuzz_stats_denormalizer.py)     | `StatsDenormalizer.__call__(outputs)`                                        | Same as normalizer; round-trip `normalize(denormalize(x)) ≈ x` for well-conditioned stats                                                     | I-8, I-9, I-10 |
-| [`fuzz_resize_preprocessor.py`](harnesses/fuzz_resize_preprocessor.py)   | `ResizePreprocessor.__call__(inputs)`                                        | Channels-first and channels-last images; uint8 and float32; zero spatial dims; extreme target resolutions; stretch and letterbox modes        | I-11, I-12     |
-| [`fuzz_resize_smolvla.py`](harnesses/fuzz_resize_smolvla.py)             | `ResizeSmolVLA.__call__(inputs)`                                             | Same image layouts as above; arbitrary target resolution                                                                                      | I-11, I-13     |
-| [`fuzz_action_normalizer.py`](harnesses/fuzz_action_normalizer.py)       | `ActionNormalizer.__call__(outputs)`                                         | Output dicts with arbitrary key names and array shapes; missing `action` key                                                                  | I-14           |
-| [`fuzz_action_chunk_trimmer.py`](harnesses/fuzz_action_chunk_trimmer.py) | `ActionChunkTrimmer.__call__(outputs)`                                       | Action arrays with arbitrary first and second dimensions; extreme `n_action_steps`                                                            | I-15           |
-| [`fuzz_lerp_smoother.py`](harnesses/fuzz_lerp_smoother.py)               | `LerpSmoother.merge(remaining, incoming)`                                    | 2D float arrays with arbitrary row counts, zero rows, NaN/Inf values, mismatched dims                                                         | I-16, I-17     |
-| [`fuzz_action_queue.py`](harnesses/fuzz_action_queue.py)                 | `ChunkedActionQueue.push_chunk(chunk, offset)` + `pop()`                     | Arbitrary chunk shapes, extreme offsets, concurrent push/pop sequences                                                                        | I-18           |
+| Harness                                                                  | Entry Point                                                                  | Input Space                                                                                                                                   | Oracles       |
+| ------------------------------------------------------------------------ | ---------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- | ------------- |
+| [`fuzz_manifest.py`](harnesses/fuzz_manifest.py)                         | `Manifest.load(path)`                                                        | Arbitrary JSON bytes (valid and malformed); extreme values in `shape`, `n_obs_steps`, unknown keys                                            | I-3           |
+| [`fuzz_component.py`](harnesses/fuzz_component.py)                       | `instantiate_component(spec)`, `resolve_artifact(spec, export_dir)`          | Mutated `class_path` strings; crafted `artifact` paths (`../`, absolute, symlink-like); deep nested `init_args`; arbitrary `flat_params` keys | I-1, I-4, I-5 |
+| [`fuzz_import_dotted_path.py`](harnesses/fuzz_import_dotted_path.py)     | `import_dotted_path(path)`                                                   | Arbitrary dotted strings (relative imports, no-dot strings, known-safe module roots + fuzz suffix)                                            | I-6           |
+| [`fuzz_policy_name.py`](harnesses/fuzz_policy_name.py)                   | `_is_safe_policy_name(name)`, `InferenceModel(export_dir, policy_name=name)` | Arbitrary Unicode strings; strings that pass and fail the safety regex                                                                        | I-2           |
+| [`fuzz_detect_backend.py`](harnesses/fuzz_detect_backend.py)             | `InferenceModel._detect_backend()`                                           | Export directories populated with arbitrary filename extensions and combinations                                                              | I-6           |
+| [`fuzz_prepare_inputs.py`](harnesses/fuzz_prepare_inputs.py)             | `InferenceModel._prepare_inputs(inputs)`                                     | Flat dicts, nested dicts, mixed flat+nested collisions, arbitrary key names                                                                   | I-7           |
+| [`fuzz_stats_normalizer.py`](harnesses/fuzz_stats_normalizer.py)         | `StatsNormalizer.__call__(inputs)`                                           | Arbitrary shaped float32 arrays; extreme stat values (inf, nan, zero std, inverted quantiles); all four modes                                 | I-8, I-9      |
+| [`fuzz_resize_preprocessor.py`](harnesses/fuzz_resize_preprocessor.py)   | `ResizePreprocessor.__call__(inputs)`                                        | Channels-first and channels-last images; uint8 and float32; zero spatial dims; extreme target resolutions; stretch and letterbox modes        | I-10, I-11    |
+| [`fuzz_resize_smolvla.py`](harnesses/fuzz_resize_smolvla.py)             | `ResizeSmolVLA.__call__(inputs)`                                             | Same image layouts as above; arbitrary target resolution                                                                                      | I-10, I-12    |
+| [`fuzz_action_normalizer.py`](harnesses/fuzz_action_normalizer.py)       | `ActionNormalizer.__call__(outputs)`                                         | Output dicts with arbitrary key names and array shapes; missing `action` key                                                                  | I-13          |
+| [`fuzz_action_chunk_trimmer.py`](harnesses/fuzz_action_chunk_trimmer.py) | `ActionChunkTrimmer.__call__(outputs)`                                       | Action arrays with arbitrary first and second dimensions; extreme `n_action_steps`                                                            | I-14          |
+| [`fuzz_lerp_smoother.py`](harnesses/fuzz_lerp_smoother.py)               | `LerpSmoother.merge(remaining, incoming)`                                    | 2D float arrays with arbitrary row counts, zero rows, NaN/Inf values, mismatched dims                                                         | I-15, I-16    |
+| [`fuzz_action_queue.py`](harnesses/fuzz_action_queue.py)                 | `ChunkedActionQueue.push_chunk(chunk, offset)` + `pop()`                     | Arbitrary chunk shapes, extreme offsets, concurrent push/pop sequences                                                                        | I-17          |
 
 ## Key invariants for fuzzing oracles
 
@@ -59,31 +58,28 @@ When both a flat key `"prefix.suffix"` and a nested dict `{"prefix": {"suffix": 
 **I-9 — NaN/Inf stats propagate to output**  
 When stats contain NaN or Inf and the input tensor is finite and non-empty, the output must also be non-finite. The denormalizer must not silently clamp or wrap around to produce a plausible-looking finite value.
 
-**I-10 — Round-trip for well-conditioned stats**  
-`normalize(denormalize(x)) ≈ x` within `rtol=1e-4, atol=1e-5` when all of the following hold: stats are finite, derived ranges (`max-min`, `std`, `q99-q01`) are within float32 representable bounds and above the eps-stabilisation threshold (`1e-3`), and the input array contains no subnormal float32 values (below `1.175e-38`).
-
-**I-11 — Preprocessor output is float32 channels-first**  
+**I-10 — Preprocessor output is float32 channels-first**  
 `ResizePreprocessor` and `ResizeSmolVLA` must produce `float32` output in `(B, C, H, W)` layout when the output is non-empty, regardless of input dtype or channel layout.
 
-**I-12 — No unhandled exception for zero-spatial images**  
+**I-11 — No unhandled exception for zero-spatial images**
 `ResizePreprocessor` must not raise `ZeroDivisionError` or any unhandled exception when the input image has zero height or width. It must either produce an empty output or raise `ValueError`.
 
-**I-13 — SmolVLA pixel values in [-1, 1]**  
+**I-12 — SmolVLA pixel values in [-1, 1]**
 All pixel values in the `IMAGES` output of `ResizeSmolVLA` must satisfy `-1.0 - ε ≤ value ≤ 1.0 + ε` (with `ε = 1e-5`). Values outside this range produce out-of-distribution model inputs that can drive the robot with incorrectly scaled actions.
 
-**I-14 — ActionNormalizer always emits `"action"` key**  
+**I-13 — ActionNormalizer always emits `"action"` key**
 The output dict of `ActionNormalizer.__call__()` must contain the key `"action"` for any input, even if the input dict does not contain it. Other keys must pass through unchanged.
 
-**I-15 — ActionChunkTrimmer reduces chunk to at most `n_action_steps`**  
+**I-14 — ActionChunkTrimmer reduces chunk to at most `n_action_steps`**
 The second dimension of the output action array must be `≤ n_action_steps`. The trimmer must not increase the action horizon.
 
-**I-16 — LerpSmoother output is float32**  
+**I-15 — LerpSmoother output is float32**
 `LerpSmoother.merge()` output dtype must always be `np.float32`, regardless of input dtypes.
 
-**I-17 — LerpSmoother does not introduce NaN**  
+**I-16 — LerpSmoother does not introduce NaN**
 If neither `remaining` nor `incoming` contains NaN or Inf, the merged output must also not contain NaN or Inf.
 
-**I-18 — ChunkedActionQueue is thread-safe**  
+**I-17 — ChunkedActionQueue is thread-safe**
 Concurrent `push_chunk` and `pop` calls must not raise exceptions, corrupt the deque, or return arrays of unexpected shape. `pop()` returns either `None` or a 1-D array; it must never raise.
 
 ## Shared Test Utilities
@@ -103,4 +99,4 @@ All helpers pad short byte sequences with zeros so the harness never throws `Ind
 ## Corpus and seeds
 
 - `tests/fuzz/corpus/<harness>/` - working corpus; populated by libFuzzer during fuzzing runs.
-- `tests/fuzz/seeds/manifest/` - hand-curated valid `manifest.json` examples used to bootstrap the manifest harness.
+- `tests/fuzz/seeds/fuzz_manifest/` - hand-curated valid `manifest.json` examples used to bootstrap the manifest harness.

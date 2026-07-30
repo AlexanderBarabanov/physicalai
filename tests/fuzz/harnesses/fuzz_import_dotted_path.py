@@ -52,9 +52,12 @@ def test_one_input(data: bytes) -> None:
         path = f"{root}.{suffix_clean}" if suffix_clean else root
         try:
             import_dotted_path(path)
-        except (ValueError, AttributeError):
+        except ValueError:
             pass
-
+        except AttributeError as exc:
+            raise AssertionError(
+                f"import_dotted_path({path!r}) raised AttributeError ({exc}); expected ValueError"
+                ) from None
     else:
         # No-dot string — must always raise ValueError
         path = fdp.ConsumeUnicodeNoSurrogates(64).replace(".", "_")
