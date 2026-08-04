@@ -114,6 +114,20 @@ class TestResizePreprocessor:
         # Channels-last input is converted to channels-first output.
         assert result[IMAGES].shape == (1, 3, 64, 64)
 
+    def test_channels_last_grayscale_returns_channels_first(self) -> None:
+        # Regression: C=1 in BHWC was misidentified as channels-first, producing
+        # garbage output with H in the channel position.
+        prep = ResizePreprocessor(image_resolution=(64, 64), mode=ResizeMode.STRETCH)
+        img = np.random.rand(1, 47, 32, 1).astype(np.float32)  # (B, H, W, C=1)
+        result = prep({IMAGES: img})
+        assert result[IMAGES].shape == (1, 1, 64, 64)
+
+    def test_channels_last_rgba_returns_channels_first(self) -> None:
+        prep = ResizePreprocessor(image_resolution=(32, 32), mode=ResizeMode.STRETCH)
+        img = np.random.rand(1, 16, 16, 4).astype(np.float32)  # (B, H, W, C=4)
+        result = prep({IMAGES: img})
+        assert result[IMAGES].shape == (1, 4, 32, 32)
+
     def test_channels_last_uint8_is_normalized(self) -> None:
         prep = ResizePreprocessor(image_resolution=(32, 32), mode=ResizeMode.STRETCH)
         img = np.full((1, 16, 16, 3), 255, dtype=np.uint8)

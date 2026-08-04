@@ -124,7 +124,7 @@ class ResizePreprocessor(Preprocessor):
             msg = f"Unsupported image dtype: {img.dtype}"
             raise ValueError(msg)
 
-        channels_last = img.shape[-1] == 3 and img.shape[1] != 3  # noqa: PLR2004
+        channels_last = img.shape[-1] in (1, 3, 4) and img.shape[1] not in (1, 3, 4)  # noqa: PLR2004
         if not channels_last:
             img = np.transpose(img, (0, 2, 3, 1))  # (B, C, H, W) -> (B, H, W, C)
 
