@@ -15,6 +15,9 @@ on:
     paths:
       - "tests/fuzz/**"
       - ".github/workflows/fuzz.yml"
+  push: # TODO remove
+    branches:
+      - fuzz-fix
 
 permissions: {}
 

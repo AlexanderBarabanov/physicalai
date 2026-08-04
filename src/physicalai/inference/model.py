@@ -389,8 +389,15 @@ class InferenceModel:
             for key, value in inputs.items():
                 if isinstance(value, dict):
                     for sub_key, sub_value in value.items():
-                        flat_inputs[f"{key}.{sub_key}"] = sub_value
+                        flat_key = f"{key}.{sub_key}"
+                        if flat_key in flat_inputs:
+                            msg = f"Key collision in inputs: '{flat_key}' produced by both a flat key and nested dict '{key}'"
+                            raise ValueError(msg)
+                        flat_inputs[flat_key] = sub_value
                 else:
+                    if key in flat_inputs:
+                        msg = f"Key collision in inputs: '{key}' produced by both a nested expansion and a flat key"
+                        raise ValueError(msg)
                     flat_inputs[key] = value
 
             filtered: dict[str, np.ndarray] = {}
