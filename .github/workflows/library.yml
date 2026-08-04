@@ -4,7 +4,6 @@ on:
   push:
     branches:
       - main
-      - fuzz-fix-3
   pull_request:
   workflow_dispatch:
 
