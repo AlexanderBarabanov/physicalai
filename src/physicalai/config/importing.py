@@ -44,9 +44,8 @@ def import_dotted_path(path: str) -> object:
             try:
                 obj = getattr(obj, attr)
             except AttributeError as exc:
-                raise ValueError(
-                    f"could not resolve attribute {attr!r} in {path!r}: {exc}"
-                ) from exc
+                msg = f"could not resolve attribute {attr!r} in {path!r}: {exc}"
+                raise ValueError(msg) from exc
         return obj
 
     msg = f"could not import any module prefix of {path!r}"

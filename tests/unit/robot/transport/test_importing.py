@@ -25,5 +25,6 @@ def test_unimportable_prefix_raises() -> None:
 
 
 def test_importable_module_bad_attribute_raises() -> None:
-    with pytest.raises(AttributeError):
+    # Contract is ValueError, not AttributeError — see import_dotted_path docstring.
+    with pytest.raises(ValueError, match="could not resolve attribute"):
         import_dotted_path("os.path.NoSuchRobot")
