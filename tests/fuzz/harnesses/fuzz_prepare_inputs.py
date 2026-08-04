@@ -55,8 +55,8 @@ def _sub_collision_determinism(fdp: atheris.FuzzedDataProvider) -> None:
     try:
         result_a = _call_prepare_inputs(inputs_a, [dot_key])
         result_b = _call_prepare_inputs(inputs_b, [dot_key])
-    except KeyError:
-        return  # Acceptable — key may not survive the filter
+    except (KeyError, ValueError):
+        return  # Acceptable — collision raises ValueError; key may not survive the filter
 
     # Both calls must succeed or both fail; if both succeed, each must return
     # the same tensor (whichever side of the collision wins must be consistent).
