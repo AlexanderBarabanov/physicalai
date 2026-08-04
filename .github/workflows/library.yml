@@ -4,7 +4,6 @@ on:
   push:
     branches:
       - main
-      - fuzz-fix # TODO remove
   pull_request:
   workflow_dispatch:
 
