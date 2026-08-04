@@ -272,6 +272,50 @@ class TestStatsNormalizerArtifactParam:
         assert "stats.safetensors" in r
 
 
+class TestStatsNormalizerCorruptedStats:
+    @pytest.mark.parametrize("bad_value", [float("nan"), float("inf"), float("-inf")])
+    def test_mean_std_nan_std_raises(self, bad_value: float) -> None:
+        # Regression for fuzzer crash: -Inf std previously returned 0.0 silently.
+        norm = StatsNormalizer(
+            mode="mean_std",
+            features=["obs"],
+            stats={"obs": {"mean": np.array([0.0]), "std": np.array([bad_value])}},
+        )
+        with pytest.raises(ValueError, match="corrupted"):
+            norm({"obs": np.array([1.0, 2.0])})
+
+    @pytest.mark.parametrize("bad_value", [float("nan"), float("inf"), float("-inf")])
+    def test_mean_std_nan_mean_raises(self, bad_value: float) -> None:
+        norm = StatsNormalizer(
+            mode="mean_std",
+            features=["obs"],
+            stats={"obs": {"mean": np.array([bad_value]), "std": np.array([1.0])}},
+        )
+        with pytest.raises(ValueError, match="corrupted"):
+            norm({"obs": np.array([1.0, 2.0])})
+
+    @pytest.mark.parametrize("mode,stat_keys", [
+        ("min_max", {"min": np.array([0.0]), "max": np.array([float("inf")])}),
+        ("min_max", {"min": np.array([float("-inf")]), "max": np.array([1.0])}),
+        ("quantiles", {"q01": np.array([float("nan")]), "q99": np.array([1.0])}),
+        ("quantiles", {"q01": np.array([0.0]), "q99": np.array([float("nan")])}),
+    ])
+    def test_other_modes_non_finite_stats_raise(self, mode: str, stat_keys: dict) -> None:
+        norm = StatsNormalizer(mode=mode, features=["obs"], stats={"obs": stat_keys})
+        with pytest.raises(ValueError, match="corrupted"):
+            norm({"obs": np.array([0.5])})
+
+    def test_finite_stats_still_normalize_correctly(self) -> None:
+        mean, std, x = 1.0, 0.5, 1.5
+        norm = StatsNormalizer(
+            mode="mean_std",
+            features=["obs"],
+            stats={"obs": {"mean": np.array([mean]), "std": np.array([std])}},
+        )
+        result = norm({"obs": np.array([x])})
+        np.testing.assert_allclose(result["obs"], [(x - mean) / (std + _EPS)], rtol=1e-6)
+
+
 class TestParseFlatStats:
     def test_skips_keys_without_slash(self, tmp_path: Path) -> None:
         stats = {

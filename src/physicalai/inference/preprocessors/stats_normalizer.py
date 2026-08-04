@@ -182,21 +182,33 @@ def _normalize(
 
     Returns:
         Normalized array.
+
+    Raises:
+        ValueError: If any stats array contains NaN or Inf.
     """
     if mode == "mean_std":
         mean = stats["mean"]
         std = stats["std"]
+        if not np.all(np.isfinite(mean)) or not np.all(np.isfinite(std)):
+            msg = "mean_std stats contain NaN or Inf — the model artifact may be corrupted"
+            raise ValueError(msg)
         return (tensor - mean) / (std + _EPS)
 
     if mode == "min_max":
         min_val = stats["min"]
         max_val = stats["max"]
+        if not np.all(np.isfinite(min_val)) or not np.all(np.isfinite(max_val)):
+            msg = "min_max stats contain NaN or Inf — the model artifact may be corrupted"
+            raise ValueError(msg)
         denom = max_val - min_val + _EPS
         return 2.0 * (tensor - min_val) / denom - 1.0
 
     if mode == "quantiles":
         q01 = stats["q01"]
         q99 = stats["q99"]
+        if not np.all(np.isfinite(q01)) or not np.all(np.isfinite(q99)):
+            msg = "quantiles stats contain NaN or Inf — the model artifact may be corrupted"
+            raise ValueError(msg)
         denom = q99 - q01
         denom = np.where(denom == 0, _EPS, denom)
         return 2.0 * (tensor - q01) / denom - 1.0
