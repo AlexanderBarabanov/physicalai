@@ -400,10 +400,7 @@ class InferenceModel:
                         flat_inputs[flat_key] = sub_value
                 else:
                     if key in flat_inputs:
-                        msg = (
-                            f"Key collision in inputs: '{key}' produced by"
-                            " both a nested expansion and a flat key"
-                        )
+                        msg = f"Key collision in inputs: '{key}' produced by both a nested expansion and a flat key"
                         raise ValueError(msg)
                     flat_inputs[key] = value
 
