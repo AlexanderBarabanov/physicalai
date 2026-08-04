@@ -168,6 +168,21 @@ class TestResizeSmolVLADtypeAndLayout:
         result_hwc = prep({IMAGES: hwc})
         np.testing.assert_array_equal(result_chw[IMAGES], result_hwc[IMAGES])
 
+    def test_ambiguous_layout_raises(self) -> None:
+        # Both dim-1 and dim-4 are in {1,2,3,4} — layout is indeterminate.
+        prep = ResizeSmolVLA(image_resolution=(64, 64))
+        img = np.random.rand(1, 3, 3, 3).astype(np.float32)
+        with pytest.raises(ValueError, match="ambiguous layout"):
+            prep({IMAGES: img})
+
+    def test_extreme_aspect_ratio_does_not_crash(self) -> None:
+        # Regression: int(cur_height / ratio) could be 0 for extreme ratios, crashing cv2.
+        prep = ResizeSmolVLA(image_resolution=(512, 512))
+        img = np.zeros((1, 3, 1, 256), dtype=np.float32)  # very thin image
+        result = prep({IMAGES: img})
+        assert result[IMAGES].shape[2] >= 1
+        assert result[IMAGES].shape[3] >= 1
+
 
 class TestResizeSmolVLAResizeWithPad:
     def test_invalid_ndim_raises(self) -> None:

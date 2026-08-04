@@ -135,6 +135,13 @@ class TestResizePreprocessor:
         result = prep({IMAGES: img})
         assert result[IMAGES].shape == (1, 4, 32, 32)
 
+    def test_ambiguous_layout_raises(self) -> None:
+        # Both dim-1 and dim-4 are in {1,2,3,4} — layout is indeterminate.
+        prep = ResizePreprocessor(image_resolution=(64, 64), mode=ResizeMode.STRETCH)
+        img = np.random.rand(1, 3, 3, 3).astype(np.float32)  # (B, 3, 3, 3) — ambiguous
+        with pytest.raises(ValueError, match="ambiguous layout"):
+            prep({IMAGES: img})
+
     def test_channels_last_uint8_is_normalized(self) -> None:
         prep = ResizePreprocessor(image_resolution=(32, 32), mode=ResizeMode.STRETCH)
         img = np.full((1, 16, 16, 3), 255, dtype=np.uint8)

@@ -81,6 +81,12 @@ class ResizeSmolVLA(Preprocessor):
                 raise ValueError(msg)
 
             # Heuristic: standard channel counts are {1, 2, 3, 4}; spatial dims are typically larger.
+            if img_fp32.ndim == 4 and img_fp32.shape[-1] in {1, 2, 3, 4} and img_fp32.shape[1] in {1, 2, 3, 4}:  # noqa: PLR2004
+                msg = (
+                    f"ambiguous layout: both dim 1 ({img_fp32.shape[1]}) and dim -1 ({img_fp32.shape[-1]}) "
+                    "look like standard channel counts; provide input with spatial dims > 4"
+                )
+                raise ValueError(msg)
             if img_fp32.ndim == 4 and img_fp32.shape[-1] in {1, 2, 3, 4} and img_fp32.shape[1] not in {1, 2, 3, 4}:  # noqa: PLR2004
                 img_fp32 = np.transpose(img_fp32, (0, 3, 1, 2))  # (B, H, W, C) to (B, C, H, W)
 
@@ -111,8 +117,8 @@ class ResizeSmolVLA(Preprocessor):
             raise ValueError(msg)
 
         ratio = max(cur_width / width, cur_height / height)
-        resized_height = int(cur_height / ratio)
-        resized_width = int(cur_width / ratio)
+        resized_height = max(1, min(int(cur_height / ratio), height))
+        resized_width = max(1, min(int(cur_width / ratio), width))
 
         # Per-image cv2 bilinear resize (matches F.interpolate align_corners=False)
         batch = []
