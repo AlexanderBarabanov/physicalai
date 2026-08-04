@@ -139,3 +139,16 @@ class TestResizePreprocessor:
         # quantization step (1/255 ~= 0.0039).
         mean_abs_diff = np.mean(np.abs(out_float - out_uint8))
         assert mean_abs_diff < 1.0 / 255.0
+
+    def test_zero_height_raises(self) -> None:
+        # Regression for fuzzer crash: previously raised ZeroDivisionError.
+        prep = ResizePreprocessor(image_resolution=(64, 64))
+        img = np.zeros((1, 3, 0, 64), dtype=np.float32)
+        with pytest.raises(ValueError, match="zero spatial dimension"):
+            prep({IMAGES: img})
+
+    def test_zero_width_raises(self) -> None:
+        prep = ResizePreprocessor(image_resolution=(64, 64))
+        img = np.zeros((1, 3, 64, 0), dtype=np.float32)
+        with pytest.raises(ValueError, match="zero spatial dimension"):
+            prep({IMAGES: img})

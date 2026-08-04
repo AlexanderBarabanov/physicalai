@@ -18,7 +18,8 @@ def import_dotted_path(path: str) -> object:
         The resolved object.
 
     Raises:
-        ValueError: If no module prefix can be imported, or *path* has no ``.``.
+        ValueError: If no module prefix can be imported, *path* has no ``'.'``,
+            or the resolved module has no attribute matching the remaining segments.
         ModuleNotFoundError: If an existing module prefix fails because a
             dependency is missing (not merely because a longer prefix is not a
             module).
@@ -40,7 +41,12 @@ def import_dotted_path(path: str) -> object:
                 continue
             raise
         for attr in segments[split_index:]:
-            obj = getattr(obj, attr)
+            try:
+                obj = getattr(obj, attr)
+            except AttributeError as exc:
+                raise ValueError(
+                    f"could not resolve attribute {attr!r} in {path!r}: {exc}"
+                ) from exc
         return obj
 
     msg = f"could not import any module prefix of {path!r}"

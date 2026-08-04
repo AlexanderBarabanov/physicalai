@@ -165,3 +165,16 @@ class TestResizeSmolVLAResizeWithPad:
         result = ResizeSmolVLA._resize_with_pad(img, 64, 64)
         assert result.shape[2] == 64
         assert result.shape[3] == 64
+
+    def test_zero_height_raises(self) -> None:
+        # Regression for fuzzer crash: previously raised ZeroDivisionError.
+        prep = ResizeSmolVLA(image_resolution=(512, 512))
+        img = np.zeros((1, 3, 0, 64), dtype=np.float32)
+        with pytest.raises(ValueError, match="zero spatial dimension"):
+            prep({IMAGES: img})
+
+    def test_zero_width_raises(self) -> None:
+        prep = ResizeSmolVLA(image_resolution=(512, 512))
+        img = np.zeros((1, 3, 64, 0), dtype=np.float32)
+        with pytest.raises(ValueError, match="zero spatial dimension"):
+            prep({IMAGES: img})

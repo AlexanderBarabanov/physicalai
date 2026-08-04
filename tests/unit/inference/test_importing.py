@@ -36,8 +36,14 @@ class TestImportDottedPath:
             import_dotted_path("totally.unknown.module.Cls")
 
     def test_importable_module_bad_attribute_raises(self) -> None:
-        with pytest.raises(AttributeError):
+        # Contract is ValueError, not AttributeError — see import_dotted_path docstring.
+        with pytest.raises(ValueError, match="could not resolve attribute"):
             import_dotted_path("os.path.NoSuchAttribute")
+
+    def test_importable_module_missing_attribute_raises_value_error(self) -> None:
+        # Regression for fuzzer crash: previously raised AttributeError.
+        with pytest.raises(ValueError, match="could not resolve attribute"):
+            import_dotted_path("abc._")
 
     def test_stdlib_function(self) -> None:
         obj = import_dotted_path("os.path.join")

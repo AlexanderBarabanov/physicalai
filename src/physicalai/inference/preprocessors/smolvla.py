@@ -104,6 +104,10 @@ class ResizeSmolVLA(Preprocessor):
 
         cur_height, cur_width = img.shape[2:]
 
+        if cur_height == 0 or cur_width == 0:
+            msg = f"Input image has a zero spatial dimension: shape {img.shape}"
+            raise ValueError(msg)
+
         ratio = max(cur_width / width, cur_height / height)
         resized_height = int(cur_height / ratio)
         resized_width = int(cur_width / ratio)

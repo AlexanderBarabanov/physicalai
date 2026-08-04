@@ -106,7 +106,8 @@ class ResizePreprocessor(Preprocessor):
         Raises:
             ValueError: If the input array does not have 4 dimensions, or if it
                 has an unsupported dtype (not ``uint8`` or floating point),
-                or if the ``pad_value`` is out of range for ``uint8`` inputs.
+                or if the ``pad_value`` is out of range for ``uint8`` inputs,
+                or if the input image has a zero spatial dimension.
         """
         img_dim = 4
         if img.ndim != img_dim:
@@ -129,6 +130,10 @@ class ResizePreprocessor(Preprocessor):
 
         target_height, target_width = self._image_resolution
         cur_height, cur_width = img.shape[1:3]
+
+        if cur_height == 0 or cur_width == 0:
+            msg = f"Input image has a zero spatial dimension: shape {img.shape}"
+            raise ValueError(msg)
 
         if self._mode == ResizeMode.LETTERBOX:
             ratio = max(cur_width / target_width, cur_height / target_height)
