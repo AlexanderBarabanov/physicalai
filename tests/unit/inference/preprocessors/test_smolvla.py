@@ -132,6 +132,15 @@ class TestResizeSmolVLADtypeAndLayout:
         with pytest.raises(ValueError, match="Unsupported image dtype"):
             prep({IMAGES: img})
 
+    def test_out_of_range_float_clamped_to_pixel_bounds(self) -> None:
+        # Regression: arbitrary float values previously caused output far outside [-1, 1].
+        prep = ResizeSmolVLA(image_resolution=(32, 32))
+        img = np.full((1, 3, 32, 32), -1e30, dtype=np.float32)
+        result = prep({IMAGES: img})
+        out = result[IMAGES]
+        assert float(out.min()) >= -1.0 - 1e-5
+        assert float(out.max()) <= 1.0 + 1e-5
+
     def test_channels_last_transposed(self) -> None:
         prep = ResizeSmolVLA(image_resolution=(64, 64))
         # (B, H, W, C) input should be transposed to (B, C, H, W) internally
