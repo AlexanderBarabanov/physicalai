@@ -381,6 +381,7 @@ class InferenceModel:
         Raises:
             KeyError: If an expected adapter input is not found in the
                 (flattened) inputs.
+            ValueError: If two inputs expand to the same flattened key.
         """
         expected = self.adapter.input_names
 
@@ -391,12 +392,18 @@ class InferenceModel:
                     for sub_key, sub_value in value.items():
                         flat_key = f"{key}.{sub_key}"
                         if flat_key in flat_inputs:
-                            msg = f"Key collision in inputs: '{flat_key}' produced by both a flat key and nested dict '{key}'"
+                            msg = (
+                                f"Key collision in inputs: '{flat_key}' produced by"
+                                f" both a flat key and nested dict '{key}'"
+                            )
                             raise ValueError(msg)
                         flat_inputs[flat_key] = sub_value
                 else:
                     if key in flat_inputs:
-                        msg = f"Key collision in inputs: '{key}' produced by both a nested expansion and a flat key"
+                        msg = (
+                            f"Key collision in inputs: '{key}' produced by"
+                            " both a nested expansion and a flat key"
+                        )
                         raise ValueError(msg)
                     flat_inputs[key] = value
 
