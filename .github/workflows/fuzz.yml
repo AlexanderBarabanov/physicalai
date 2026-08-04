@@ -15,9 +15,6 @@ on:
     paths:
       - "tests/fuzz/**"
       - ".github/workflows/fuzz.yml"
-  push:
-    branches:
-      - fuzz-fix-2
 
 permissions: {}
 
