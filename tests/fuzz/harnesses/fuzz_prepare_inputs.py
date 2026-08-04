@@ -55,21 +55,16 @@ def _sub_collision_determinism(fdp: atheris.FuzzedDataProvider) -> None:
     try:
         result_a = _call_prepare_inputs(inputs_a, [dot_key])
         result_b = _call_prepare_inputs(inputs_b, [dot_key])
-    except (KeyError, ValueError):
-        return  # Acceptable — collision raises ValueError; key may not survive the filter
+    except KeyError:
+        return  # key may not survive the filter
+    except ValueError:
+        return  # collision correctly rejected — expected outcome per I-7
 
-    # Both calls must succeed or both fail; if both succeed, each must return
-    # the same tensor (whichever side of the collision wins must be consistent).
-    if dot_key in result_a and dot_key in result_b:
-        val_a = result_a[dot_key]
-        val_b = result_b[dot_key]
-        # At minimum the shapes must match — if the winner differs the shapes
-        # could differ, which is the actual safety bug (wrong tensor fed to model).
-        assert val_a.shape == val_b.shape, (
-            f"_prepare_inputs collision is non-deterministic: "
-            f"order-A produced shape {val_a.shape}, order-B produced {val_b.shape} "
-            f"for key {dot_key!r}"
-        )
+    # Neither call raised: collision was silently resolved, which is a regression.
+    raise AssertionError(
+        f"_prepare_inputs silently resolved flat+nested collision for key {dot_key!r} "
+        f"without raising ValueError; regression against I-7"
+    )
 
 
 @atheris.instrument_func
