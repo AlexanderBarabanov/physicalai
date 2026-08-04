@@ -74,7 +74,8 @@ class ResizeSmolVLA(Preprocessor):
             if img.dtype == np.uint8:
                 img_fp32 = img.astype(np.float32) / 255.0
             elif np.issubdtype(img.dtype, np.floating):
-                img_fp32 = np.clip(img.astype(np.float32), 0.0, 1.0)
+                # Replace NaN/Inf before clipping; clip enforces the [0, 1] precondition.
+                img_fp32 = np.clip(np.nan_to_num(img.astype(np.float32), nan=0.0, posinf=1.0, neginf=0.0), 0.0, 1.0)
             else:
                 msg = f"Unsupported image dtype: {img.dtype}"
                 raise ValueError(msg)
