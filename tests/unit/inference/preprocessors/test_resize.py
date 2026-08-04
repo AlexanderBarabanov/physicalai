@@ -122,6 +122,13 @@ class TestResizePreprocessor:
         result = prep({IMAGES: img})
         assert result[IMAGES].shape == (1, 1, 64, 64)
 
+    def test_channels_last_two_channel_returns_channels_first(self) -> None:
+        # Regression: C=2 in BHWC was misidentified as channels-first.
+        prep = ResizePreprocessor(image_resolution=(64, 64), mode=ResizeMode.STRETCH)
+        img = np.random.rand(1, 22, 32, 2).astype(np.float32)  # (B, H, W, C=2)
+        result = prep({IMAGES: img})
+        assert result[IMAGES].shape == (1, 2, 64, 64)
+
     def test_channels_last_rgba_returns_channels_first(self) -> None:
         prep = ResizePreprocessor(image_resolution=(32, 32), mode=ResizeMode.STRETCH)
         img = np.random.rand(1, 16, 16, 4).astype(np.float32)  # (B, H, W, C=4)
