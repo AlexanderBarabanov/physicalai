@@ -80,7 +80,7 @@ class ResizeSmolVLA(Preprocessor):
                 raise ValueError(msg)
 
             # Heuristic: standard channel counts are {1, 2, 3, 4}; spatial dims are typically larger.
-            if img_fp32.ndim == 4 and img_fp32.shape[-1] in (1, 2, 3, 4) and img_fp32.shape[1] not in (1, 2, 3, 4):  # noqa: PLR2004
+            if img_fp32.ndim == 4 and img_fp32.shape[-1] in {1, 2, 3, 4} and img_fp32.shape[1] not in {1, 2, 3, 4}:  # noqa: PLR2004
                 img_fp32 = np.transpose(img_fp32, (0, 3, 1, 2))  # (B, H, W, C) to (B, C, H, W)
 
             resized_img = self._resize_with_pad(img_fp32, *self.image_resolution, pad_value=0)
