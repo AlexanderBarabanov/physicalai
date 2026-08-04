@@ -104,14 +104,15 @@ def _sub_no_crash(fdp: atheris.FuzzedDataProvider) -> None:
 
     try:
         result = _call_prepare_inputs(inputs, expected)
-    except KeyError:
-        return  # Acceptable — a requested key was not present
+    except (KeyError, ValueError):
+        return  # Acceptable — missing key or collision between flat/nested key
 
-    # Oracle: result values must be ndarray instances (not raw dicts)
-    for v in result.values():
-        assert isinstance(v, np.ndarray), (
-            f"_prepare_inputs returned a non-ndarray value: {type(v).__name__}"
-        )
+    # Oracle: only applies when flattening ran (passthrough returns nested dicts as-is)
+    if expected is not None:
+        for v in result.values():
+            assert isinstance(v, np.ndarray), (
+                f"_prepare_inputs returned a non-ndarray value: {type(v).__name__}"
+            )
 
 
 @atheris.instrument_func
