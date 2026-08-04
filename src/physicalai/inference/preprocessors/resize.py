@@ -83,7 +83,7 @@ class ResizePreprocessor(Preprocessor):
 
         return outputs
 
-    def _resize_with_ar_pad(self, img: np.ndarray) -> np.ndarray:  # noqa: PLR0914
+    def _resize_with_ar_pad(self, img: np.ndarray) -> np.ndarray:  # noqa: PLR0912, PLR0914
         """Resize an image array to the target resolution.
 
                 Behavior depends on the configured ``mode``:
