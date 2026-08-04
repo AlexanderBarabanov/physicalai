@@ -49,8 +49,8 @@ These are the security/safety and correctness properties each harness asserts. A
 **I-6 — No unexpected exception from import or detection**  
 `import_dotted_path()` must raise only `ValueError` for paths that cannot be imported — never `TypeError`, `AttributeError`, or other undocumented exceptions. `_detect_backend()` must raise `ValueError` (not crash) when no model files are found.
 
-**I-7 — Deterministic key-collision resolution in `_prepare_inputs`**  
-When both a flat key `"prefix.suffix"` and a nested dict `{"prefix": {"suffix": v}}` are present, the result must be the same regardless of dict insertion order. The collision winner must be deterministic.
+**I-7 — Key collision in `_prepare_inputs` raises `ValueError`**  
+When both a flat key `"prefix.suffix"` and a nested dict `{"prefix": {"suffix": v}}` are present, `_prepare_inputs` must raise `ValueError`. Silently picking a winner based on insertion order would allow a caller to substitute an arbitrary tensor into the model without any observable error.
 
 **I-8 — Non-listed keys pass through unchanged**  
 `StatsDenormalizer` and `StatsNormalizer` must not modify or drop keys that are not in the `features` list. The value at any non-listed key must be byte-for-byte identical in the output.
