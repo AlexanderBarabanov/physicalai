@@ -1,13 +1,8 @@
 .header {
   background:
     url(../../img/header-bk.png) no-repeat top center,
-    linear-gradient(90deg, #031233 0%, #091c46 50%, #031233 100%),
-    linear-gradient(
-      0deg,
-      rgba(3, 18, 51, 0) 0%,
-      rgba(3, 18, 51, 0.5) 22.63%,
-      #031233 45.26%
-    );
+    linear-gradient(0deg, rgba(3, 18, 51, 0) 0%, rgba(3, 18, 51, 0.5) 22.63%, #031233 45.26%),
+    linear-gradient(90deg, #031233 0%, #091c46 50%, #031233 100%);
   background-size: contain;
 }
 
@@ -19,12 +14,7 @@
 }
 
 .gradientTitle {
-  background: linear-gradient(
-    101.29deg,
-    #91ffed 0.16%,
-    #3094ff 36.93%,
-    #b57cff 73.71%
-  );
+  background: linear-gradient(101.29deg, #91ffed 0.16%, #3094ff 36.93%, #b57cff 73.71%);
   z-index: 1;
   color: transparent;
   position: relative;
@@ -83,11 +73,19 @@
 
 .continuousLoop {
   display: flex;
+  position: relative;
+  padding: 63px 54px;
   align-items: center;
   background: #000e2ede;
   border: 1px solid #ffffff0d;
 
+  img:first-child {
+    max-width: 320px;
+  }
+
   img:last-child {
+    top: 0px;
+    left: 0px;
     position: absolute;
   }
 }
