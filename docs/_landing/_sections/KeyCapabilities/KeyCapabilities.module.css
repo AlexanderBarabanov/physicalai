@@ -31,6 +31,10 @@
   grid-template-rows: repeat(5, auto);
 }
 
+.fullHeightCard {
+  height: 100%;
+}
+
 .row1,
 .row3,
 .row5,

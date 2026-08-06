@@ -1,8 +1,9 @@
 .container {
   background:
     url(../../img//policy-execution-bk.png) no-repeat center,
-    linear-gradient(90deg, #031233 0%, #091c46 50%, #031233 100%),
-    linear-gradient(0deg, rgba(3, 18, 51, 0) 0%, rgba(3, 18, 51, 0.5) 22.63%, #031233 45.26%);
+    linear-gradient(90deg, #0e1566 0%, #2c2cb6 100%),
+    linear-gradient(0deg, rgba(3, 18, 51, 0) 0%, rgba(3, 18, 51, 0.5) 22.63%, #031233 45.26%),
+    linear-gradient(90deg, #031233 0%, #091c46 50%, #031233 100%);
   background-size: cover;
 }
 

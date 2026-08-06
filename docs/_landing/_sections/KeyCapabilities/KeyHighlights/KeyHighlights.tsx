@@ -5,7 +5,7 @@ import { DottedCard } from "../../../_components/DottedCard/DottedCardDetails";
 export const KeyHighlights = () => {
   return (
     <DottedCard>
-      <img src={openVinoIr} alt="OpenVINO IR" />
+      <img className={styles.image} src={openVinoIr} alt="OpenVINO IR" />
 
       <h3 className={styles.title}>Key highlights</h3>
 
