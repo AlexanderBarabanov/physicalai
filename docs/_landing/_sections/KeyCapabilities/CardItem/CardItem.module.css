@@ -1,7 +1,6 @@
 .item {
-  width: 200;
-
-  border-radius: 7px;
+  overflow: hidden;
+  border-radius: 8px;
   border-width: 1px;
   background: #ffffff;
 

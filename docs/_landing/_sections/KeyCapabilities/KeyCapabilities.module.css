@@ -1,5 +1,4 @@
 .title {
-  font-family: IntelOne Display;
   font-weight: 500;
   font-size: 48px;
   line-height: 48px;
@@ -29,6 +28,10 @@
   margin-top: calc(var(--margin-size) * 4);
   grid-template-columns: minmax(0, 1fr);
   grid-template-rows: repeat(5, auto);
+}
+
+.fullHeightCard {
+  height: 100%;
 }
 
 .row1,

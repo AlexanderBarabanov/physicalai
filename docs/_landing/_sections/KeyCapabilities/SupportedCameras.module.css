@@ -1,6 +1,6 @@
 .title {
-  font-weight: 500;
   font-size: 28px;
+  font-weight: 500;
   line-height: 36px;
 }
 
@@ -8,4 +8,5 @@
   gap: 16px;
   display: flex;
   margin-top: 16px;
+  flex-wrap: wrap;
 }

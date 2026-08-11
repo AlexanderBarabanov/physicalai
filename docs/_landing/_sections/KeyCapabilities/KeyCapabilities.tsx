@@ -1,22 +1,21 @@
 import { CapabilityCard } from "../../_components/CapabilityCard/CapabilityCard";
+import { LeftToRightDottedConnector } from "../../_components/LeftToRightDottedConnector/LeftToRightDottedConnector";
+import { RightToLeftDottedConnector } from "../../_components/RightToLeftDottedConnector/RightToLeftDottedConnector";
 import { Section } from "../../_components/Section/Section";
-import styles from "./KeyCapabilities.module.css";
-import leftToRightConnector from "../../img/left-right-connector.png";
-import rightToLeftConnector from "../../img/right-left-connector.png";
 import continuousLoopImg from "../../img/continuous-loop.png";
+import styles from "./KeyCapabilities.module.css";
+import { KeyHighlights } from "./KeyHighlights/KeyHighlights";
 import { SupportedCameras } from "./SupportedCameras";
 import { SupportedRobots } from "./SupportedRobots";
-import { KeyHighlights } from "./KeyHighlights/KeyHighlights";
 
 export const KeyCapabilities = () => {
   return (
     <Section>
       <h2 className={styles.title}>User Journey</h2>
       <p className={styles.description}>
-        Physical AI Runtime provides the deployment-side components for running
-        trained policies on real hardware. It handles camera capture, robot
-        control, and policy inference with a unified API that works across
-        different hardware vendors.
+        Physical AI Runtime provides the deployment-side components for running trained policies on
+        real hardware. It handles camera capture, robot control, and policy inference with a unified
+        API that works across different hardware vendors.
       </p>
 
       <div className={styles.twoColumnsFiveRowsGrid}>
@@ -48,13 +47,14 @@ export const KeyCapabilities = () => {
         </div>
 
         <div className={styles.row2}>
-          <img src={leftToRightConnector} />
+          <LeftToRightDottedConnector />
         </div>
 
         <div className={styles.row3}>
           <SupportedRobots />
 
           <CapabilityCard
+            className={styles.fullHeightCard}
             title="Connect your robots"
             description="Robots implement a Protocol-based interface. Any class with connect(), disconnect(), get_observation(), send_action(), and joint_names works - no inheritance required."
             codeSnippet={`
@@ -66,7 +66,7 @@ export const KeyCapabilities = () => {
         </div>
 
         <div className={styles.row4}>
-          <img src={rightToLeftConnector} />
+          <RightToLeftDottedConnector />
         </div>
 
         <div className={styles.row5}>
@@ -83,10 +83,9 @@ export const KeyCapabilities = () => {
                 >
                   Physical AI Studio
                 </a>
-                . The InferenceModel class auto-detects the backend (OpenVINO or
-                ONNX in this package; companion distributions may contribute
-                additional adapters such as ExecuTorch) and handles action
-                chunking automatically.
+                . The InferenceModel class auto-detects the backend (OpenVINO or ONNX in this
+                package; companion distributions may contribute additional adapters such as
+                ExecuTorch) and handles action chunking automatically.
               </>
             }
             codeSnippet={`
@@ -100,15 +99,11 @@ export const KeyCapabilities = () => {
         </div>
 
         <div className={styles.row6}>
-          <img src={leftToRightConnector} />
+          <LeftToRightDottedConnector />
         </div>
 
         <div className={styles.row7}>
-          <img
-            className={styles.continuousLoopImg}
-            src={continuousLoopImg}
-            alt="Continuous Loop"
-          />
+          <img className={styles.continuousLoopImg} src={continuousLoopImg} alt="Continuous Loop" />
 
           <CapabilityCard
             title="Execution behavior"

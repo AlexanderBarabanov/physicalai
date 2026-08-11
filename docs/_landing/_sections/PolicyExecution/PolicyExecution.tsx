@@ -7,8 +7,7 @@ export const PolicyExecution = () => (
     <h2 className={styles.title}>Real-time Policy Execution Engine</h2>
 
     <p className={styles.description}>
-      At the heart of the framework is a policy runtime designed for physical
-      systems:
+      At the heart of the framework is a policy runtime designed for physical systems:
     </p>
 
     <ul className={styles.list}>
@@ -26,11 +25,7 @@ export const PolicyExecution = () => (
       />
       <PolicyCard
         title={"Physical AI Runtime"}
-        listItems={[
-          "event-driven",
-          "long-running",
-          "connected to sensors and actuators",
-        ]}
+        listItems={["event-driven", "long-running", "connected to sensors and actuators"]}
       />
       <PolicyCard
         title={"This enables systems that"}

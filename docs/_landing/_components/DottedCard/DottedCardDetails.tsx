@@ -1,10 +1,12 @@
+import clsx from "clsx";
 import { ReactNode } from "react";
 import styles from "./DottedCard.module.css";
 
 type DottedCardProps = {
   children: ReactNode;
+  className?: string;
 };
 
-export const DottedCard = ({ children }: DottedCardProps) => {
-  return <div className={styles.container}>{children}</div>;
+export const DottedCard = ({ children, className }: DottedCardProps) => {
+  return <div className={clsx(styles.container, className)}>{children}</div>;
 };

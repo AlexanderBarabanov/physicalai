@@ -10,7 +10,7 @@ export const PythonCode = ({ code }: PythonCodeProps) => {
     <Code
       theme={{
         colors: {
-          "editor.background": "#0c1d42",
+          "editor.background": "#0C1D42",
           "editor.foreground": "#FFFFFF",
         },
       }}

@@ -7,12 +7,7 @@ type CardDetailsProps = {
   description: string;
 };
 
-export const CardDetails = ({
-  title,
-  iconUrl,
-  description,
-  maxIconWidth,
-}: CardDetailsProps) => {
+export const CardDetails = ({ title, iconUrl, description, maxIconWidth }: CardDetailsProps) => {
   return (
     <div className={styles.container}>
       <img style={{ maxWidth: maxIconWidth }} src={iconUrl} alt={title} />

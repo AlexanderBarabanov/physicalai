@@ -5,6 +5,7 @@ import styles from "./CapabilityCard.module.css";
 
 type CapabilityCardProps = {
   title: string;
+  className?: string;
   description: ReactNode;
   codeSnippet: string;
 };
@@ -13,9 +14,10 @@ export const CapabilityCard = ({
   title,
   description,
   codeSnippet,
+  className,
 }: CapabilityCardProps) => {
   return (
-    <DottedCard>
+    <DottedCard className={className}>
       <h3 className={styles.title}>{title}</h3>
 
       <div className={styles.description}>{description}</div>
