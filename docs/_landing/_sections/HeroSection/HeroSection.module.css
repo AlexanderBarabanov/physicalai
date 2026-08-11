@@ -9,15 +9,16 @@
 .title {
   font-size: 72px;
   line-height: 72px;
-  font-weight: 500;
+  font-weight: 700;
   vertical-align: middle;
 }
 
 .gradientTitle {
-  background: linear-gradient(101.29deg, #91ffed 0.16%, #3094ff 36.93%, #b57cff 73.71%);
-  z-index: 1;
   color: transparent;
+  z-index: 1;
   position: relative;
+  background: linear-gradient(101.29deg, #91ffed 0.16%, #3094ff 36.93%, #b57cff 73.71%);
+  font-weight: 700;
   background-clip: text;
   -webkit-background-clip: text;
 }

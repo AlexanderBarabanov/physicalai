@@ -1,4 +1,4 @@
-import openVinoIr from "../../../img/openvinoIr.png";
+import openVinoIr from "../../../img/openvino-ir.png";
 import styles from "./KeyHighlights.module.css";
 import { DottedCard } from "../../../_components/DottedCard/DottedCardDetails";
 
