@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.3.2](https://github.com/AlexanderBarabanov/physicalai/compare/v0.3.1...v0.3.2) (2026-08-11)
+
+
+### 🐛 Bug Fixes
+
+* broken link ([2aa05c0](https://github.com/AlexanderBarabanov/physicalai/commit/2aa05c0cde4c65451d578ad7a1c5473eb8da5599))
+
+
+### 📚 Documentation
+
+* make RELEASE guide pass prek markdownlint and prettier hooks ([ef1fb0d](https://github.com/AlexanderBarabanov/physicalai/commit/ef1fb0d90a09549026b65e61886dce032e631b23))
+* new look and feel ([0690ada](https://github.com/AlexanderBarabanov/physicalai/commit/0690ada9eae66b8d8c493b4a423206d370fd0409))
+* New look and feel ([4e7b26a](https://github.com/AlexanderBarabanov/physicalai/commit/4e7b26ab9515c97bbb63644351084168ba025bac))
+* New look and feel - p2 ([3ae59a4](https://github.com/AlexanderBarabanov/physicalai/commit/3ae59a4d8ce74be2fde8d406aef91b0ccccbb81d))
+
 ## [0.3.1](https://github.com/AlexanderBarabanov/physicalai/compare/v0.3.0...v0.3.1) (2026-06-24)
 
 
