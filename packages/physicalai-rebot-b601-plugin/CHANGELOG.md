@@ -1,5 +1,24 @@
 # Changelog
 
+## [0.8.0](https://github.com/AlexanderBarabanov/physicalai/compare/physicalai-rebot-b601-plugin-v0.7.0...physicalai-rebot-b601-plugin-v0.8.0) (2026-10-02)
+
+
+### ✨ Features
+
+* add first party robot plugins ([#263](https://github.com/AlexanderBarabanov/physicalai/issues/263)) ([41e3ecf](https://github.com/AlexanderBarabanov/physicalai/commit/41e3ecf5e8d7a1c91d14234fceb0d040e2c7e07b))
+* **rebot-b601:** add B601-RS follower to the Studio catalog ([#319](https://github.com/AlexanderBarabanov/physicalai/issues/319)) ([216c65f](https://github.com/AlexanderBarabanov/physicalai/commit/216c65ffd9f6cd53892dcfeb799d1fde629e7e7c))
+
+
+### 🐛 Bug Fixes
+
+* **rebot-b601:** add max_relative_target and Seeed gripper torque limits to B601-RS ([#322](https://github.com/AlexanderBarabanov/physicalai/issues/322)) ([9b69d6f](https://github.com/AlexanderBarabanov/physicalai/commit/9b69d6f23bfce6e3f1cf687a2108389b0e33e471))
+* **rebot-b601:** hold pose correctly and expose MIT gains on the RS driver ([#300](https://github.com/AlexanderBarabanov/physicalai/issues/300)) ([cba5932](https://github.com/AlexanderBarabanov/physicalai/commit/cba59327df509cf492e02dae11b049eaf5ded54c))
+
+
+### 🔧 Chores
+
+* **main:** release physicalai-rebot-b601-plugin 0.7.0 ([#277](https://github.com/AlexanderBarabanov/physicalai/issues/277)) ([3808fe3](https://github.com/AlexanderBarabanov/physicalai/commit/3808fe3dbd3dbe0870b0372d624980719ffc411b))
+
 ## [0.7.0](https://github.com/openvinotoolkit/physicalai/compare/physicalai-rebot-b601-plugin-v0.6.0...physicalai-rebot-b601-plugin-v0.7.0) (2026-09-15)
 
 
