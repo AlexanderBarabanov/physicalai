@@ -161,6 +161,7 @@ def _structured_valid_mode(fdp: atheris.FuzzedDataProvider) -> None:
 
         decoded, decoded_goal_time, decoded_ts = decode_action(encode_action(action, goal_time))
 
+        assert decoded.shape == action.shape, f"action round-trip changed shape: {decoded.shape} != {action.shape}"
         np.testing.assert_array_equal(decoded, action, err_msg="action round-trip changed values")
         assert decoded.dtype == action.dtype, f"action round-trip changed dtype: {decoded.dtype} != {action.dtype}"
         assert _float_eq(decoded_goal_time, goal_time), "goal_time round-trip changed value"
@@ -177,9 +178,13 @@ def _structured_valid_mode(fdp: atheris.FuzzedDataProvider) -> None:
             encode_state(joint_positions=joint_positions, state=state, timestamp=timestamp, sensor_data=sensor_data)
         )
 
+        assert obs.joint_positions.shape == joint_positions.shape, (
+            f"joint_positions round-trip changed shape: {obs.joint_positions.shape} != {joint_positions.shape}"
+        )
         np.testing.assert_array_equal(
             obs.joint_positions, joint_positions, err_msg="joint_positions round-trip changed values"
         )
+        assert obs.state.shape == state.shape, f"state round-trip changed shape: {obs.state.shape} != {state.shape}"
         np.testing.assert_array_equal(obs.state, state, err_msg="state round-trip changed values")
         assert _float_eq(obs.timestamp, timestamp), "timestamp round-trip changed value"
     else:
