@@ -1,22 +1,14 @@
 # Copyright (C) 2026 Intel Corporation
 # SPDX-License-Identifier: Apache-2.0
 
-"""Fuzz the robot transport msgpack codec (``_codec.py``) — raw bytes and
-structure-aware action/state/metadata records.
+"""Fuzz the robot transport msgpack codec (``_codec.py``).
 
 Raw-bytes mode feeds arbitrary bytes straight into the four decode entry
 points for msgpack/numpy parser robustness. Structure-aware mode builds an
-action/state/metadata record from fuzz-derived field values — including
-malformed ``__np__`` markers, missing keys, and wrong-typed fields —
+action/state/metadata record from fuzz-derived field values including
+malformed ``__np__`` markers, missing keys, and wrong-typed fields
 ``msgpack.packb()``s it, and decodes it so mutation reaches dtype/shape/key
 validation instead of stopping at msgpack syntax.
-
-This harness targets the *current* transport codec, before a hardware-facing
-action-validation contract (numeric dtype, finiteness, bounds) lands at this
-boundary. It does not assert semantic bounds/finiteness on decoded actions —
-that contract does not exist yet — it only asserts that decoding never raises
-an undocumented exception, and that genuinely valid records round-trip
-exactly.
 """
 
 from __future__ import annotations
@@ -45,11 +37,15 @@ with atheris.instrument_imports():
 from _helpers import make_float_array
 
 # Exceptions the codec's own contract documents as expected parser
-# rejections: the 1 MiB size gate, the dict-root type gate, msgpack syntax
-# errors, numpy dtype/shape errors, and missing required record keys.
-# MemoryError, RecursionError, a hang, or any other undocumented exception
-# is a finding, not an expected outcome — do not widen this tuple to
-# `Exception` and do not add RecursionError without an accompanying fix.
+# rejections: the 1 MiB size gate, the nesting-depth gate, the dict-root
+# type gate, msgpack syntax errors, numpy dtype/shape errors, and missing
+# required record keys. MemoryError, a hang, or any other undocumented
+# exception is a finding, not an expected outcome -- do not widen this
+# tuple to `Exception`. A ~1000-level nested payload used to raise an
+# uncaught RecursionError here (see the CI crash this harness caught);
+# `_decode_payload()` now rejects excessive nesting with `ValueError`
+# before recursing that deep, so a `RecursionError` finding again would
+# mean that guard regressed, not that it's expected.
 _EXPECTED_DECODE_EXCEPTIONS = (
     ValueError,
     TypeError,
@@ -62,11 +58,10 @@ _EXPECTED_DECODE_EXCEPTIONS = (
 
 _REAL_DTYPES = ["float32", "float64", "int8", "int16", "int32", "int64", "uint8", "uint16", "bool", "complex64"]
 _BAD_DTYPE_STRINGS = ["", "not-a-dtype", "O", "V0", "U10"]
-# Keep structure-aware nesting shallow: this harness documents the parser
-# contract, it does not reproduce the known unbounded-recursion gap (a
-# ~1000-level payload makes decoding raise an undocumented RecursionError
-# well inside the 1 MiB size gate).
-_MAX_FUZZ_NESTING = 6
+# Metadata is a flat dict of up to this many fields -- not a nesting depth;
+# deep nesting is exercised separately by raw-bytes mode mutating actual
+# msgpack bytes, which is how the recursion finding above was found.
+_MAX_METADATA_FIELDS = 6
 
 
 def _float_eq(first: float, second: float) -> bool:
@@ -132,7 +127,7 @@ def _fuzz_field_value(fdp: atheris.FuzzedDataProvider, *, prefer_np: bool) -> ob
 
 def _fuzz_metadata(fdp: atheris.FuzzedDataProvider, *, allow_np_markers: bool) -> dict:
     metadata: dict = {}
-    for _ in range(fdp.ConsumeIntInRange(0, _MAX_FUZZ_NESTING)):
+    for _ in range(fdp.ConsumeIntInRange(0, _MAX_METADATA_FIELDS)):
         key = fdp.ConsumeUnicodeNoSurrogates(16) or "k"
         if allow_np_markers and fdp.ConsumeBool():
             metadata[key] = _fuzz_field_value(fdp, prefer_np=True)

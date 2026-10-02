@@ -38,6 +38,9 @@ The richest realistic record (bimanual state: 14-dim ``joint_positions`` +
 KB. 1 MiB leaves generous headroom for future growth while still rejecting
 a corrupted or hostile payload before any unpacking work is spent on it.
 """
+_MAX_PAYLOAD_DEPTH = 32
+"""Nesting depth limit for :func:`_decode_payload`'s recursive walk.
+"""
 
 
 def _encode_numpy(array: np.ndarray) -> dict[str, Any]:
@@ -49,13 +52,16 @@ def _encode_numpy(array: np.ndarray) -> dict[str, Any]:
     }
 
 
-def _decode_payload(value: object) -> object:
+def _decode_payload(value: object, _depth: int = 0) -> object:
+    if isinstance(value, (dict, list)) and _depth > _MAX_PAYLOAD_DEPTH:
+        msg = f"Robot transport payload nesting exceeds the {_MAX_PAYLOAD_DEPTH}-level limit"
+        raise ValueError(msg)
     if isinstance(value, dict):
         if value.get("__np__"):
             return np.frombuffer(value["data"], dtype=np.dtype(value["dtype"])).reshape(value["shape"])
-        return {key: _decode_payload(item) for key, item in value.items()}
+        return {key: _decode_payload(item, _depth + 1) for key, item in value.items()}
     if isinstance(value, list):
-        return [_decode_payload(item) for item in value]
+        return [_decode_payload(item, _depth + 1) for item in value]
     return value
 
 
