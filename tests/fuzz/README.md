@@ -26,6 +26,7 @@ Each row maps a harness file to the component it covers, its input space, and th
 | [`fuzz_action_chunk_trimmer.py`](harnesses/fuzz_action_chunk_trimmer.py) | `ActionChunkTrimmer.__call__(outputs)`                                       | Action arrays with arbitrary first and second dimensions; extreme `n_action_steps`                                                     | I-14       |
 | [`fuzz_lerp_smoother.py`](harnesses/fuzz_lerp_smoother.py)               | `LerpSmoother.merge(remaining, incoming)`                                    | 2D float arrays with arbitrary row counts, zero rows, NaN/Inf values, mismatched dims                                                  | I-15, I-16 |
 | [`fuzz_action_queue.py`](harnesses/fuzz_action_queue.py)                 | `ChunkedActionQueue.push_chunk(chunk, offset)` + `pop()`                     | Deterministic sequences of arbitrary chunks, extreme offsets, pushes, and pops                                                         | I-17       |
+| [`fuzz_transport_codec.py`](harnesses/fuzz_transport_codec.py)           | `decode_action`/`decode_state`/`decode_metadata`, `_unpack_payload`          | Raw bytes into the decode entry points; structure-aware action/state/metadata records with malformed `__np__` markers and missing keys | I-18, I-19 |
 
 ## Key invariants for fuzzing oracles
 
@@ -81,6 +82,12 @@ If neither `remaining` nor `incoming` contains NaN or Inf, the merged output mus
 
 **I-17 — ChunkedActionQueue operation sequences preserve queue invariants**
 For a deterministic sequence of `push_chunk` and `pop` calls, counters and remaining length must match the reference state. `pop()` returns either `None` or a 1-D array. Thread safety is tested separately with controlled pytest concurrency tests.
+
+**I-18 — Transport codec parser robustness**
+`_unpack_payload()`, `decode_action()`, `decode_state()`, and `decode_metadata()` must raise only the documented exceptions (`ValueError`, `TypeError`, `KeyError`, `UnicodeDecodeError`, `OverflowError`, or a `msgpack.exceptions.UnpackException`/`ExtraData`) for arbitrary bytes or a structurally malformed record. This is parser robustness only — it does not assert that a successfully decoded action is safe to actuate; hardware-facing dtype/finiteness/bounds validation is a separate, not-yet-implemented contract at this boundary. `RecursionError` is deliberately **not** in the expected set: `_decode_payload()` has no nesting-depth limit, unlike `physicalai.config`'s `_MAX_CONFIG_DEPTH`, and a small (~3 KB) deeply nested payload reproducibly raises an uncaught `RecursionError` well inside the 1 MiB size gate. This is a known open gap — not something this harness's oracle should paper over.
+
+**I-19 — Transport codec round-trip preserves value, dtype, and shape**
+For a genuinely valid `encode_action()`/`decode_action()`, `encode_state()`/`decode_state()`, or `encode_metadata()`/`decode_metadata()` round trip, the decoded value must equal the original byte-for-byte (dtype, shape, and values for arrays; exact equality for metadata primitives). This sub-target intentionally excludes 0-dimensional (scalar) arrays: `encode_action()`/`encode_state()` call `np.ascontiguousarray()`, which is documented to always return `ndim >= 1` and therefore silently reshapes a scalar action/state array to `(1,)` on encode — a known minor round-trip bug, not asserted against here.
 
 ## Shared Test Utilities
 
