@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.4.0](https://github.com/AlexanderBarabanov/physicalai/compare/physicalai-stararm-plugin-v0.3.0...physicalai-stararm-plugin-v0.4.0) (2026-10-02)
+
+
+### ✨ Features
+
+* add first party robot plugins ([#263](https://github.com/AlexanderBarabanov/physicalai/issues/263)) ([41e3ecf](https://github.com/AlexanderBarabanov/physicalai/commit/41e3ecf5e8d7a1c91d14234fceb0d040e2c7e07b))
+
+
+### ♻️ Code Refactoring
+
+* read Star Arm 102 leader with one sync command ([#321](https://github.com/AlexanderBarabanov/physicalai/issues/321)) ([111e648](https://github.com/AlexanderBarabanov/physicalai/commit/111e648d98343bf399f35e969aa20c27edaa9fc8))
+
+
+### 🔧 Chores
+
+* **main:** release physicalai-stararm-plugin 0.3.0 ([#276](https://github.com/AlexanderBarabanov/physicalai/issues/276)) ([cc7d11c](https://github.com/AlexanderBarabanov/physicalai/commit/cc7d11cdf7f7557c3443aa77f34d9a9d6696cbc5))
+
 ## [0.3.0](https://github.com/openvinotoolkit/physicalai/compare/physicalai-stararm-plugin-v0.2.0...physicalai-stararm-plugin-v0.3.0) (2026-09-15)
 
 
