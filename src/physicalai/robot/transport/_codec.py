@@ -52,6 +52,15 @@ def _encode_numpy(array: np.ndarray) -> dict[str, Any]:
     }
 
 
+def _ensure_contiguous(array: np.ndarray) -> np.ndarray:
+    # np.ascontiguousarray() is documented to always return ndim >= 1, which would
+    # silently reshape a genuine 0-d (scalar) array to (1,); skip it in that case so
+    # encode faithfully round-trips whatever shape it was given.
+    if array.ndim == 0:
+        return array
+    return np.ascontiguousarray(array)
+
+
 def _decode_payload(value: object, _depth: int = 0) -> object:
     if isinstance(value, (dict, list)) and _depth > _MAX_PAYLOAD_DEPTH:
         msg = f"Robot transport payload nesting exceeds the {_MAX_PAYLOAD_DEPTH}-level limit"
@@ -144,11 +153,11 @@ def encode_state(
         msgpack-encoded bytes.
     """
     payload: dict[str, Any] = {
-        "joint_positions": _encode_numpy(np.ascontiguousarray(joint_positions)),
-        "state": _encode_numpy(np.ascontiguousarray(state)),
+        "joint_positions": _encode_numpy(_ensure_contiguous(joint_positions)),
+        "state": _encode_numpy(_ensure_contiguous(state)),
         "timestamp": timestamp,
         "sensor_data": (
-            {k: _encode_numpy(np.ascontiguousarray(v)) for k, v in sensor_data.items()}
+            {k: _encode_numpy(_ensure_contiguous(v)) for k, v in sensor_data.items()}
             if sensor_data is not None
             else None
         ),
@@ -189,7 +198,7 @@ def encode_action(action: np.ndarray, goal_time: float) -> bytes:
         msgpack-encoded bytes.
     """
     payload: dict[str, Any] = {
-        "action": _encode_numpy(np.ascontiguousarray(action)),
+        "action": _encode_numpy(_ensure_contiguous(action)),
         "goal_time": goal_time,
         "ts": time.monotonic(),
     }
