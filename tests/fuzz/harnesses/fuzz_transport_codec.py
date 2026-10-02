@@ -36,16 +36,10 @@ with atheris.instrument_imports():
 
 from _helpers import make_float_array
 
-# Exceptions the codec's own contract documents as expected parser
-# rejections: the 1 MiB size gate, the nesting-depth gate, the dict-root
-# type gate, msgpack syntax errors, numpy dtype/shape errors, and missing
-# required record keys. MemoryError, a hang, or any other undocumented
-# exception is a finding, not an expected outcome -- do not widen this
-# tuple to `Exception`. A ~1000-level nested payload used to raise an
-# uncaught RecursionError here (see the CI crash this harness caught);
-# `_decode_payload()` now rejects excessive nesting with `ValueError`
-# before recursing that deep, so a `RecursionError` finding again would
-# mean that guard regressed, not that it's expected.
+# Exceptions the codec's own contract documents as expected parser rejections: the 1 MiB
+# size gate, the nesting-depth gate, the dict-root type gate, msgpack syntax errors, numpy
+# dtype/shape errors, and missing required record keys. MemoryError, RecursionError, a hang,
+# or any other undocumented exception is a finding -- do not widen this tuple to `Exception`.
 _EXPECTED_DECODE_EXCEPTIONS = (
     ValueError,
     TypeError,
@@ -58,9 +52,8 @@ _EXPECTED_DECODE_EXCEPTIONS = (
 
 _REAL_DTYPES = ["float32", "float64", "int8", "int16", "int32", "int64", "uint8", "uint16", "bool", "complex64"]
 _BAD_DTYPE_STRINGS = ["", "not-a-dtype", "O", "V0", "U10"]
-# Metadata is a flat dict of up to this many fields -- not a nesting depth;
-# deep nesting is exercised separately by raw-bytes mode mutating actual
-# msgpack bytes, which is how the recursion finding above was found.
+# Metadata is a flat dict of up to this many fields -- not a nesting depth.
+# Deep nesting is exercised separately, by raw-bytes mode mutating real msgpack bytes.
 _MAX_METADATA_FIELDS = 6
 
 
@@ -73,12 +66,8 @@ def _float_eq(first: float, second: float) -> bool:
 
 def _well_formed_array(fdp: atheris.FuzzedDataProvider) -> np.ndarray:
     dtype = fdp.PickValueInList(_REAL_DTYPES)
-    # ndim >= 1: encode_action()/encode_state() call np.ascontiguousarray(), which is
-    # documented to always return ndim >= 1 -- a genuine 0-d (scalar) action/state array
-    # is silently reshaped to (1,) on encode. That is a real round-trip bug, not
-    # something this harness's valid-record oracle should assert against; excluding
-    # ndim=0 here keeps this sub-target a clean round-trip check.
-    ndim = fdp.ConsumeIntInRange(1, 3)
+    # ndim=0 (scalar) is included: encode_action()/encode_state() must preserve it exactly.
+    ndim = fdp.ConsumeIntInRange(0, 3)
     shape = tuple(fdp.ConsumeIntInRange(0, 6) for _ in range(ndim))
     count = 1
     for dim in shape:
