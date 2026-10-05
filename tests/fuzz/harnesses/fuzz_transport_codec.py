@@ -181,12 +181,34 @@ def _structured_valid_mode(fdp: atheris.FuzzedDataProvider) -> None:
         assert obs.joint_positions.shape == joint_positions.shape, (
             f"joint_positions round-trip changed shape: {obs.joint_positions.shape} != {joint_positions.shape}"
         )
+        assert obs.joint_positions.dtype == joint_positions.dtype, (
+            f"joint_positions round-trip changed dtype: {obs.joint_positions.dtype} != {joint_positions.dtype}"
+        )
         np.testing.assert_array_equal(
             obs.joint_positions, joint_positions, err_msg="joint_positions round-trip changed values"
         )
         assert obs.state.shape == state.shape, f"state round-trip changed shape: {obs.state.shape} != {state.shape}"
+        assert obs.state.dtype == state.dtype, f"state round-trip changed dtype: {obs.state.dtype} != {state.dtype}"
         np.testing.assert_array_equal(obs.state, state, err_msg="state round-trip changed values")
         assert _float_eq(obs.timestamp, timestamp), "timestamp round-trip changed value"
+        if sensor_data is None:
+            assert obs.sensor_data is None, "sensor_data round-trip changed None to a value"
+        else:
+            assert obs.sensor_data is not None, "sensor_data round-trip dropped a value"
+            assert obs.sensor_data.keys() == sensor_data.keys(), (
+                f"sensor_data round-trip changed keys: {obs.sensor_data.keys()} != {sensor_data.keys()}"
+            )
+            for key, array in sensor_data.items():
+                decoded_array = obs.sensor_data[key]
+                assert decoded_array.shape == array.shape, (
+                    f"sensor_data[{key!r}] round-trip changed shape: {decoded_array.shape} != {array.shape}"
+                )
+                assert decoded_array.dtype == array.dtype, (
+                    f"sensor_data[{key!r}] round-trip changed dtype: {decoded_array.dtype} != {array.dtype}"
+                )
+                np.testing.assert_array_equal(
+                    decoded_array, array, err_msg=f"sensor_data[{key!r}] round-trip changed values"
+                )
     else:
         metadata = _fuzz_metadata(fdp, allow_np_markers=False)
         assert decode_metadata(encode_metadata(metadata)) == metadata, "metadata round-trip changed value"
