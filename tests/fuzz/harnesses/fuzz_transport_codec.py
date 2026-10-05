@@ -136,8 +136,8 @@ def _fuzz_metadata(fdp: atheris.FuzzedDataProvider, *, allow_np_markers: bool) -
 @atheris.instrument_func
 def _raw_bytes_mode(fdp: atheris.FuzzedDataProvider) -> None:
     """Feed arbitrary bytes straight into the decode entry points."""
-    data = fdp.ConsumeBytes(fdp.remaining_bytes())
     target = fdp.ConsumeIntInRange(0, 3)
+    data = fdp.ConsumeBytes(fdp.remaining_bytes())
     try:
         if target == 0:
             _unpack_payload(data)
