@@ -1,0 +1,47 @@
+name: Local OpenVINO Qwen Inference
+on: [push]
+
+jobs:
+  run-openvino-qwen:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+          cache: 'pip'
+
+      # Install OpenVINO GenAI and Hugging Face Hub
+      - name: Install Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install openvino-genai huggingface_hub
+
+      # Download the model from Hugging Face
+      - name: Download Qwen3-4B-int4-ov Model
+        run: |
+          python -c "
+          from huggingface_hub import snapshot_download
+          snapshot_download(repo_id='OpenVINO/Qwen3-4B-int4-ov', local_dir='qwen3_model')
+          "
+
+      # Run inference using OpenVINO GenAI API on the Runner's CPU
+      - name: Run Inference
+        run: |
+          python -c "
+          import openvino_genai as ov_genai
+
+          # Initialize the pipeline to run on CPU
+          pipe = ov_genai.LLMPipeline('qwen3_model', 'CPU')
+
+          # Run generation
+          prompt = 'Explain the concept of functional safety in robotics in two sentences.'
+          print(f'\n--- Prompt: {prompt} ---')
+
+          response = pipe.generate(prompt, max_new_tokens=100)
+          print('\n--- Response: ---')
+          print(response)
+          "
