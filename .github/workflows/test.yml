@@ -1,4 +1,4 @@
-name: Local OpenVINO Qwen Inference
+name: Local OpenVINO Qwen Inference test
 on: [push]
 
 jobs:
