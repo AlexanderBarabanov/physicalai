@@ -1,5 +1,5 @@
 name: Local OpenVINO Qwen Inference test
-on: [push]
+on: [workflow_dispatch]
 
 jobs:
   run-openvino-qwen:

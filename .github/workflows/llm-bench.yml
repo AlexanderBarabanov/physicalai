@@ -1,0 +1,81 @@
+name: LLM CI Benchmark (OpenVINO vs baselines)
+
+on:
+  workflow_dispatch:
+    inputs:
+      rounds:
+        description: "Full passes over all backends (detects runner drift)"
+        default: "2"
+      repeats:
+        description: "Timed repeats per task per pass"
+        default: "3"
+      include_pytorch:
+        description: "Also run the slow PyTorch bf16 baseline"
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+env:
+  TOKENIZER: Qwen/Qwen3-4B
+  HF_HUB_DISABLE_TELEMETRY: "1"
+
+jobs:
+  bench:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install torch --index-url https://download.pytorch.org/whl/cpu
+          pip install "openvino-genai>=2025.2" "transformers>=4.56" huggingface_hub
+          pip install llama-cpp-python --extra-index-url https://abetlen.github.io/llama-cpp-python/whl/cpu
+
+      - name: Record hardware
+        run: |
+          lscpu | grep -E "Model name|^CPU\(s\)|Thread" | tee hw.txt
+          echo "ISA: $(grep -o -E 'avx2|avx512[a-z_0-9]*|amx[a-z_0-9]*' /proc/cpuinfo | sort -u | tr '\n' ' ')" | tee -a hw.txt
+          free -m | tee -a hw.txt
+
+      - name: Run benchmark
+        env:
+          ROUNDS: ${{ inputs.rounds }}
+          REPEATS: ${{ inputs.repeats }}
+          INCLUDE_PT: ${{ inputs.include_pytorch }}
+        run: |
+          B=.github/benchmarks/llm_ci/bench.py
+          for round in $(seq 1 "$ROUNDS"); do
+            # int4 vs int4: OpenVINO NNCF int4 vs llama.cpp Q4_K_M
+            python $B run --round $round --repeats "$REPEATS" --tokenizer "$TOKENIZER" \
+              --label ov-int4 --backend ov --repo OpenVINO/Qwen3-4B-int4-ov || echo "ov-int4 failed"
+            python $B run --round $round --repeats "$REPEATS" --tokenizer "$TOKENIZER" \
+              --label gguf-q4 --backend gguf --repo Qwen/Qwen3-4B-GGUF --file Qwen3-4B-Q4_K_M.gguf || echo "gguf-q4 failed"
+            if [ "$INCLUDE_PT" = "true" ]; then
+              # "default weights" baseline: original checkpoint on PyTorch CPU
+              python $B run --round $round --repeats 1 --tokenizer "$TOKENIZER" \
+                --label pytorch-bf16 --backend hf --repo Qwen/Qwen3-4B --dtype bfloat16 || echo "pytorch failed"
+            fi
+          done
+
+      - name: Report
+        run: |
+          {
+            echo "## LLM CI benchmark"
+            echo '```'; cat hw.txt; echo '```'
+            python .github/benchmarks/llm_ci/bench.py report --baseline gguf-q4
+          } | tee -a "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: llm-bench-results
+          path: |
+            results.jsonl
+            hw.txt
