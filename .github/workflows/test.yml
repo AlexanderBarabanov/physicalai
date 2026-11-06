@@ -91,6 +91,7 @@ jobs:
           import os
           import sys
           import time
+          import urllib.error
           import urllib.request
           from pathlib import Path
 
@@ -103,32 +104,45 @@ jobs:
               "temperature": 0,
               "max_tokens": 256,
           }
-          request = urllib.request.Request(
-              "http://127.0.0.1:8080/v1/chat/completions",
-              data=json.dumps(body).encode(),
-              headers={"Content-Type": "application/json"},
-          )
-          start = time.monotonic()
-          with urllib.request.urlopen(request, timeout=600) as response:  # noqa: S310
-              reply = json.load(response)
-          gen_s = time.monotonic() - start
-          content = reply["choices"][0]["message"]["content"]
-          (out_dir / "response.json").write_text(content, encoding="utf-8")
+
+          def post(payload):
+              request = urllib.request.Request(
+                  "http://127.0.0.1:8080/v1/chat/completions",
+                  data=json.dumps(payload).encode(),
+                  headers={"Content-Type": "application/json"},
+              )
+              with urllib.request.urlopen(request, timeout=600) as response:  # noqa: S310
+                  return json.load(response)
 
           result = {
               "name": os.environ["MODEL_NAME"],
               "file": os.environ["MODEL_FILE_NAME"],
               "load_s": float(os.environ["LOAD_S"]),
-              "generation_s": round(gen_s, 1),
-              "completion_tokens": (reply.get("usage") or {}).get("completion_tokens"),
+              "generation_s": None,
+              "completion_tokens": None,
               "highlight": None,
               "words": 0,
               "error": None,
           }
+          content = ""
+          start = time.monotonic()
           try:
+              try:
+                  reply = post(body)
+              except urllib.error.HTTPError as error:
+                  print(f"HTTP {error.code} with response_format: {error.read().decode(errors='replace')}")
+                  # Some chat templates reject the JSON-mode grammar; the prompt already asks for JSON only.
+                  body.pop("response_format")
+                  reply = post(body)
+              result["generation_s"] = round(time.monotonic() - start, 1)
+              result["completion_tokens"] = (reply.get("usage") or {}).get("completion_tokens")
+              content = reply["choices"][0]["message"]["content"]
               result["highlight"] = json.loads(content)["highlight"]
+          except urllib.error.HTTPError as error:
+              result["error"] = f"HTTP {error.code}: {error.read().decode(errors='replace')[:300]}"
           except (json.JSONDecodeError, KeyError, TypeError) as error:
               result["error"] = f"invalid JSON: {error}"
+          (out_dir / "response.json").write_text(content, encoding="utf-8")
           if isinstance(result["highlight"], str):
               result["words"] = len(result["highlight"].split())
           (out_dir / "result.json").write_text(json.dumps(result, indent=2), encoding="utf-8")
@@ -151,6 +165,7 @@ jobs:
       - name: Stop llama-server
         if: always()
         run: |
+          tail -n 40 "${RUNNER_TEMP}/llama-server.log" || true
           if [ -n "${LLAMA_PID:-}" ]; then
             kill "${LLAMA_PID}" 2>/dev/null || true
           fi
