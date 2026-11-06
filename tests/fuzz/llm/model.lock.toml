@@ -1,0 +1,17 @@
+# Pins for the local LLM seed generator (see tests/fuzz/llm-seed-plan.md, PR2b).
+# fetch_pinned.py verifies every SHA-256 below before anything is loaded or executed, and rejects
+# malformed values, so a placeholder fails closed.
+
+[model]
+# Q4_K_M quantization of Qwen/Qwen3-4B-Instruct-2507 (Apache-2.0) published by unsloth.
+repo = "unsloth/Qwen3-4B-Instruct-2507-GGUF"
+revision = "a06e946bb6b655725eafa393f4a9745d460374c9"
+file = "Qwen3-4B-Instruct-2507-Q4_K_M.gguf"
+sha256 = "3605803b982cb64aead44f6c1b2ae36e3acdb41d8e46c8a94c6533bc4c67e597"
+size_bytes = 2497281120
+
+[llama_cpp]
+# CPU-only Linux x64 build from the ggml-org/llama.cpp release page.
+tag = "b12110"
+asset = "llama-b12110-bin-ubuntu-x64.tar.gz"
+sha256 = "368227edcc229be5f9bed16a2223d79b5e41d0ac2e19bcf5825e82291c060e55"

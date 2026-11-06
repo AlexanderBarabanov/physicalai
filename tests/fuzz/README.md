@@ -30,6 +30,12 @@ Each row maps a harness file to the component it covers, its input space, and th
 | [`fuzz_shared_codec.py`](harnesses/fuzz_shared_codec.py)                 | `unpack_msgpack`/`decode_payload`, `pack_msgpack`/`encode_numpy`             | Raw bytes, tagged `__np__` arrays, nesting/depth gates, and round-trips; fuzz-derived `max_bytes`/`max_depth`                          | I-20, I-21 |
 | [`fuzz_remote_protocol.py`](harnesses/fuzz_remote_protocol.py)           | `decode_message`/`decode_predict_request`/`decode_predict_reply`, encoders   | Raw bytes and malformed protocol maps (version/seq/budget/timings/types/inputs/outputs); encoders and round-trips                      | I-22, I-23 |
 | [`fuzz_remote_images.py`](harnesses/fuzz_remote_images.py)               | `decode_images`, `decode_predict_request` (images), `encode_images`          | Raw bytes with JPEG/raw entries, malformed metadata/shapes/codecs, predict-request images; size-capped decode and round-trips          | I-24, I-25 |
+| [`fuzz_manifest_json.py`](harnesses/fuzz_manifest_json.py)               | `Manifest.model_validate(json.loads(data))`                                  | Verbatim JSON bytes, no `FuzzedDataProvider`; seeds are plain manifest JSON                                                            | I-3        |
+| [`fuzz_remote_raw.py`](harnesses/fuzz_remote_raw.py)                     | `decode_message`/`decode_predict_request`/`decode_predict_reply` on one input | Verbatim MessagePack bytes, no `FuzzedDataProvider`; seeds are converted by [`llm/to_msgpack.py`](llm/to_msgpack.py)                   | I-22, I-24 |
+
+The two raw-input harnesses are not yet in the `fuzz.yml` matrix. Their control seeds live in
+[`llm/control/remote_raw/`](llm/control/remote_raw/) as JSON; convert them with
+`python tests/fuzz/llm/to_msgpack.py tests/fuzz/llm/control/remote_raw <out_dir>`.
 
 ## Key invariants for fuzzing oracles
 

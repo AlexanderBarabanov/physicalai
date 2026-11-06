@@ -1,0 +1,193 @@
+# Manual check that a GitHub-hosted runner can run the pinned local LLM and generate fuzz seeds.
+# Never runs on pull_request or schedule. See tests/fuzz/llm-seed-plan.md (PR2b, Gate R).
+
+name: Fuzz LLM generate
+
+on:
+  workflow_dispatch:
+    inputs:
+      harness:
+        description: "Harness to generate seeds for"
+        type: choice
+        options:
+          - manifest_json
+          - remote_raw
+        default: remote_raw
+        required: true
+      count:
+        description: "Unique seeds to generate (1-10000)"
+        default: "20"
+        required: true
+      seed:
+        description: "Base sampling seed"
+        default: "1"
+        required: true
+
+permissions: {}
+
+jobs:
+  generate:
+    name: "generate / ${{ inputs.harness }}"
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    permissions:
+      contents: read
+    env:
+      HARNESS: ${{ inputs.harness }}
+      COUNT: ${{ inputs.count }}
+      SEED: ${{ inputs.seed }}
+      OUT_DIR: tests/fuzz/llm/out
+
+    steps:
+      # Audit mode records the egress list that the scheduled workflow will later enforce in block mode.
+      - name: Harden runner
+        uses: step-security/harden-runner@46b06cea07f9e64621fdf066ba77ac6915163d43 # v2.22.3
+        with:
+          egress-policy: audit
+
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Validate inputs
+        run: |
+          [[ "${COUNT}" =~ ^[1-9][0-9]{0,3}$ ]] || { echo "::error::count must be 1-10000"; exit 1; }
+          [[ "${SEED}" =~ ^[0-9]{1,9}$ ]] || { echo "::error::seed must be a number"; exit 1; }
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.12"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
+        with:
+          version: "0.8.8"
+
+      - name: Install project dependencies
+        # --extra transport pulls in msgpack and zenoh, required by the protocol decoders.
+        run: uv sync --frozen --extra transport
+
+      # TODO: move atheris into pyproject.toml
+      - name: Install atheris
+        run: uv pip install "atheris==3.1.0"
+
+      # Hashes come from tests/fuzz/llm/model.lock.toml and are checked before anything is loaded or run.
+      - name: Fetch pinned llama.cpp and model
+        run: |
+          set -euo pipefail
+          mkdir -p "${RUNNER_TEMP}/llm"
+          server="$(uv run python tests/fuzz/llm/fetch_pinned.py llama_cpp "${RUNNER_TEMP}/llm")"
+          model="$(uv run python tests/fuzz/llm/fetch_pinned.py model "${RUNNER_TEMP}/llm")"
+          {
+            echo "LLAMA_SERVER=${server}"
+            echo "MODEL_FILE=${model}"
+          } >> "$GITHUB_ENV"
+
+      - name: Start llama-server on loopback
+        run: |
+          set -euo pipefail
+          export LD_LIBRARY_PATH="$(dirname "${LLAMA_SERVER}"):${LD_LIBRARY_PATH:-}"
+          chmod +x "${LLAMA_SERVER}"
+          SECONDS=0
+          nohup "${LLAMA_SERVER}" -m "${MODEL_FILE}" --host 127.0.0.1 --port 8080 -c 8192 -np 1 -t "$(nproc)" \
+            > "${RUNNER_TEMP}/llama-server.log" 2>&1 &
+          echo "LLAMA_PID=$!" >> "$GITHUB_ENV"
+          for _ in $(seq 1 300); do
+            if curl -fsS http://127.0.0.1:8080/health > /dev/null 2>&1; then
+              echo "LOAD_S=${SECONDS}" >> "$GITHUB_ENV"
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "::error::llama-server did not become healthy"
+          tail -n 50 "${RUNNER_TEMP}/llama-server.log"
+          exit 1
+
+      - name: Generate seeds
+        run: |
+          uv run python tests/fuzz/llm/generate_seeds.py \
+            --harness "${HARNESS}" --count "${COUNT}" --seed "${SEED}" \
+            --endpoint http://127.0.0.1:8080 --model-file "${MODEL_FILE}" \
+            --out-dir "${OUT_DIR}" --overwrite --merge
+
+      - name: Summarize runner metrics
+        if: always()
+        run: |
+          rss_kb=""
+          if [ -n "${LLAMA_PID:-}" ] && [ -r "/proc/${LLAMA_PID}/status" ]; then
+            rss_kb="$(awk '/VmHWM/ {print $2}' "/proc/${LLAMA_PID}/status")"
+          fi
+          export RSS_KB="${rss_kb}"
+          uv run python - <<'PY' >> "$GITHUB_STEP_SUMMARY"
+          import json
+          import os
+          from pathlib import Path
+
+          harness = os.environ["HARNESS"]
+          path = Path(os.environ["OUT_DIR"]) / harness / "run.json"
+          mem_mb = next(
+              (int(line.split()[1]) // 1024 for line in open("/proc/meminfo") if line.startswith("MemTotal")), None
+          )
+          load_s = float(os.environ["LOAD_S"]) if os.environ.get("LOAD_S") else None
+          rss_kb = int(os.environ["RSS_KB"]) if os.environ.get("RSS_KB") else None
+          print(f"### LLM generation on the runner: `{harness}`")
+          print()
+          print(f"- Runner: {os.cpu_count()} vCPU, {mem_mb} MiB RAM, `{os.environ.get('ImageOS')} {os.environ.get('ImageVersion')}`")
+          print(f"- Model load time: {load_s} s")
+          print(f"- llama-server peak RSS: {rss_kb // 1024 if rss_kb else None} MiB")
+          if not path.is_file():
+              print("- No run.json: generation did not finish.")
+          else:
+              info = json.loads(path.read_text(encoding="utf-8"))
+              spm = info["seeds_per_minute"]
+              print(f"- Tokens per second: {info['tokens_per_second']}")
+              print(f"- Seeds per minute: {spm}")
+              print(f"- Generation wall-clock: {info['generation_seconds']:.0f} s")
+              print(f"- Counts: `{info['counts']}`")
+              print(f"- Y: `{info['yield']}`")
+              print(f"- M3 (seeds added by merge): {info['merge_added']}")
+              if spm:
+                  projected = 200 / spm
+                  total_s = (load_s or 0) + info["generation_seconds"]
+                  print()
+                  print("Gate R time checks (starting values, meaningful for count=20):")
+                  print(f"- Load plus generation: {total_s / 60:.1f} min (limit 10) {'PASS' if total_s <= 600 else 'FAIL'}")
+                  print(f"- Projected time for 200 seeds: {projected:.1f} min (limit 30) {'PASS' if projected <= 30 else 'FAIL'}")
+          PY
+
+      - name: Upload generated seeds and run info
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: llm-seeds-${{ inputs.harness }}-${{ github.run_id }}
+          path: |
+            tests/fuzz/llm/out/${{ inputs.harness }}/run.json
+            tests/fuzz/llm/out/${{ inputs.harness }}/raw/
+            tests/fuzz/llm/out/${{ inputs.harness }}/added/
+            tests/fuzz/llm/out/${{ inputs.harness }}/responses/
+            tests/fuzz/llm/out/${{ inputs.harness }}/merge.log
+          if-no-files-found: warn
+          retention-days: 7
+
+      # libFuzzer writes these to the working directory if the merge hits a crash on generated input.
+      - name: Upload crash artifacts
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: llm-crash-${{ inputs.harness }}-${{ github.run_id }}
+          path: |
+            crash-*
+            timeout-*
+            oom-*
+            slow-unit-*
+          if-no-files-found: ignore
+          retention-days: 7
+
+      - name: Stop llama-server
+        if: always()
+        run: |
+          if [ -n "${LLAMA_PID:-}" ]; then
+            kill "${LLAMA_PID}" 2>/dev/null || true
+          fi
