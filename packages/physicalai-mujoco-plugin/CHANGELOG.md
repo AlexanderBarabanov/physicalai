@@ -9,6 +9,52 @@
 * **mujoco:** Every MuJoCo follower in Studio has a 3D model. The SO-101s keep their URDFs; the others, the WidowX AI's included, get a URDF built from the robot's MuJoCo model on first use and cached per user, so the robot page and dataset playback no longer wait forever on "Loading robot model...".
 * **mujoco:** Studio's MuJoCo follower probes report an owner as online only when it drives that entry's joints, so the single-arm entry no longer attaches to a bimanual simulation or the other way round.
 
+## [0.6.0](https://github.com/AlexanderBarabanov/physicalai/compare/physicalai-mujoco-plugin-v0.5.0...physicalai-mujoco-plugin-v0.6.0) (2026-11-06)
+
+
+### ✨ Features
+
+* **mujoco:** add a compact viewer theme and require physicalai-studio-plugin 0.4.0 ([#381](https://github.com/AlexanderBarabanov/physicalai/issues/381)) ([9ca3c5f](https://github.com/AlexanderBarabanov/physicalai/commit/9ca3c5fe25162d541735030330135bb12b457b6f))
+* **mujoco:** add a scripted demonstrator for bucket_sort ([#400](https://github.com/AlexanderBarabanov/physicalai/issues/400)) ([3f0869f](https://github.com/AlexanderBarabanov/physicalai/commit/3f0869f3f4a3bcd189390cd16491fcb2bf445929))
+* **mujoco:** add the bucket_sort scene for the Franka FR3 ([#398](https://github.com/AlexanderBarabanov/physicalai/issues/398)) ([06df4b0](https://github.com/AlexanderBarabanov/physicalai/commit/06df4b07e15205848f8b8345c7a6b707038bf416))
+* **mujoco:** Franka FR3 with hand and FR3 Duo twins, ease streamed actions ([#393](https://github.com/AlexanderBarabanov/physicalai/issues/393)) ([ab545d8](https://github.com/AlexanderBarabanov/physicalai/commit/ab545d868754fbb5bb4d61449da7239c1f944f11))
+* **mujoco:** record bucket_sort in Studio, run it on more arms, and give every robot a 3D model ([#404](https://github.com/AlexanderBarabanov/physicalai/issues/404)) ([70a360b](https://github.com/AlexanderBarabanov/physicalai/commit/70a360b15c749a64b8460cdbd3157a2b8726f925))
+* **mujoco:** show a target ghost of every robot in the viewer ([#438](https://github.com/AlexanderBarabanov/physicalai/issues/438)) ([6d3c5fb](https://github.com/AlexanderBarabanov/physicalai/commit/6d3c5fb75b9db4cd5f51fb67de610f531bc667f1))
+* **mujoco:** simulate any MuJoCo Menagerie robot with MuJoCoRobot ([#337](https://github.com/AlexanderBarabanov/physicalai/issues/337)) ([53af2a0](https://github.com/AlexanderBarabanov/physicalai/commit/53af2a0d5ab81c9a816311c70d0cee4f3ad5c84d))
+* **mujoco:** simulate legged robots, twins/bimanual and dataset arms with cameras and replay ([#353](https://github.com/AlexanderBarabanov/physicalai/issues/353)) ([7961daa](https://github.com/AlexanderBarabanov/physicalai/commit/7961daa1f04533c13c949e18b301c09b46ba0d0f))
+* **mujoco:** start Studio's viewer dark and close on the bucket_sort table ([#415](https://github.com/AlexanderBarabanov/physicalai/issues/415)) ([3c92c1f](https://github.com/AlexanderBarabanov/physicalai/commit/3c92c1f18527afc7feb019bdd255cc64d27c729b))
+* **rebot-b601:** add feedforward, speed limits, safe start-up and park ([#433](https://github.com/AlexanderBarabanov/physicalai/issues/433)) ([75f24e4](https://github.com/AlexanderBarabanov/physicalai/commit/75f24e4adc4215b74354959ce9f41483bfc2135a))
+
+
+### 🐛 Bug Fixes
+
+* **mujoco-plugin:** write the README for a PyPI install ([#389](https://github.com/AlexanderBarabanov/physicalai/issues/389)) ([a3b1359](https://github.com/AlexanderBarabanov/physicalai/commit/a3b1359be93a180d2b3e5696afe93069339a9034))
+* **mujoco:** require physicalai-studio-plugin 0.5.0 ([#423](https://github.com/AlexanderBarabanov/physicalai/issues/423)) ([ca89a35](https://github.com/AlexanderBarabanov/physicalai/commit/ca89a35bcf4a2da824749d9e24f6e8bd190c06e1))
+* **mujoco:** show camera previews in the viewer on first start ([#399](https://github.com/AlexanderBarabanov/physicalai/issues/399)) ([e93eb9c](https://github.com/AlexanderBarabanov/physicalai/commit/e93eb9c575c01672873540098c4fa3320e092577))
+
+
+### ♻️ Code Refactoring
+
+* **mujoco:** rename the plugin to physicalai-mujoco-plugin ([#336](https://github.com/AlexanderBarabanov/physicalai/issues/336)) ([efb9f11](https://github.com/AlexanderBarabanov/physicalai/commit/efb9f11c6afbf10da4e2f77da29b7917f94d1c35))
+
+
+### 📚 Documentation
+
+* add a tutorial that runs a policy in the MuJoCo simulation ([#380](https://github.com/AlexanderBarabanov/physicalai/issues/380)) ([7308fcc](https://github.com/AlexanderBarabanov/physicalai/commit/7308fcc45ebd624110d0c3a50fce4a06cf87dae8))
+
+
+### ✅ Tests
+
+* **mujoco:** retry shared-owner port collisions ([#431](https://github.com/AlexanderBarabanov/physicalai/issues/431)) ([ee381b7](https://github.com/AlexanderBarabanov/physicalai/commit/ee381b7b7643d173e9b6b74e8702fa6e800b2943))
+
+
+### 🔧 Chores
+
+* deprecate `RobotAdapterOptions` ([#374](https://github.com/AlexanderBarabanov/physicalai/issues/374)) ([0ca5b8e](https://github.com/AlexanderBarabanov/physicalai/commit/0ca5b8e06c132aa2c83aa7a92bc6dfb79a7b231f))
+* **deps:** lock file maintenance ([#428](https://github.com/AlexanderBarabanov/physicalai/issues/428)) ([c45cf71](https://github.com/AlexanderBarabanov/physicalai/commit/c45cf71f0ff5ac0d7762c2a5b9e198fedc896355))
+* **main:** release physicalai-mujoco-plugin 0.4.0 ([#342](https://github.com/AlexanderBarabanov/physicalai/issues/342)) ([493889f](https://github.com/AlexanderBarabanov/physicalai/commit/493889f21e1e24459896a3a8a5749f6684d19395))
+* **main:** release physicalai-mujoco-plugin 0.5.0 ([#384](https://github.com/AlexanderBarabanov/physicalai/issues/384)) ([c97f859](https://github.com/AlexanderBarabanov/physicalai/commit/c97f859183d378eef9160167bf8239657cb825e1))
+
 ## [0.5.0](https://github.com/openvinotoolkit/physicalai/compare/physicalai-mujoco-plugin-v0.4.0...physicalai-mujoco-plugin-v0.5.0) (2026-10-30)
 
 
