@@ -1,47 +1,121 @@
-name: Local OpenVINO Qwen Inference test
+# Manual check: summarize a model card into a catalog highlight with the pinned local LLM (llama.cpp).
+
+name: Local LLM summarization test
+
 on: [workflow_dispatch]
 
+permissions: {}
+
 jobs:
-  run-openvino-qwen:
+  summarize:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    env:
+      PROMPT_FILE: prompt.md
+      INPUT_FILE: .github/test_input/test.md
+      OUT_DIR: llm-summary
+
     steps:
-      - name: Checkout Code
-        uses: actions/checkout@v4
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          python-version: '3.10'
-          cache: 'pip'
+          persist-credentials: false
 
-      # Install OpenVINO GenAI and Hugging Face Hub
-      - name: Install Dependencies
+      - name: Set up Python 3.12
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.12"
+
+      # Reuses the pins in tests/fuzz/llm/model.lock.toml (Qwen3-4B-Instruct-2507 Q4_K_M); hashes are checked before use.
+      - name: Fetch pinned llama.cpp and model
         run: |
-          python -m pip install --upgrade pip
-          pip install openvino-genai huggingface_hub
+          set -euo pipefail
+          mkdir -p "${RUNNER_TEMP}/llm"
+          server="$(python tests/fuzz/llm/fetch_pinned.py llama_cpp "${RUNNER_TEMP}/llm")"
+          model="$(python tests/fuzz/llm/fetch_pinned.py model "${RUNNER_TEMP}/llm")"
+          {
+            echo "LLAMA_SERVER=${server}"
+            echo "MODEL_FILE=${model}"
+          } >> "$GITHUB_ENV"
 
-      # Download the model from Hugging Face
-      - name: Download Qwen3-4B-int4-ov Model
+      - name: Start llama-server on loopback
         run: |
-          python -c "
-          from huggingface_hub import snapshot_download
-          snapshot_download(repo_id='OpenVINO/Qwen3-4B-int4-ov', local_dir='qwen3_model')
-          "
+          set -euo pipefail
+          export LD_LIBRARY_PATH="$(dirname "${LLAMA_SERVER}"):${LD_LIBRARY_PATH:-}"
+          chmod +x "${LLAMA_SERVER}"
+          nohup "${LLAMA_SERVER}" -m "${MODEL_FILE}" --host 127.0.0.1 --port 8080 -c 8192 -np 1 -t "$(nproc)" \
+            > "${RUNNER_TEMP}/llama-server.log" 2>&1 &
+          echo "LLAMA_PID=$!" >> "$GITHUB_ENV"
+          for _ in $(seq 1 300); do
+            if curl -fsS http://127.0.0.1:8080/health > /dev/null 2>&1; then
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "::error::llama-server did not become healthy"
+          tail -n 50 "${RUNNER_TEMP}/llama-server.log"
+          exit 1
 
-      # Run inference using OpenVINO GenAI API on the Runner's CPU
-      - name: Run Inference
+      - name: Summarize input
         run: |
-          python -c "
-          import openvino_genai as ov_genai
+          mkdir -p "${OUT_DIR}"
+          python - <<'PY'
+          import json
+          import os
+          import sys
+          import urllib.request
+          from pathlib import Path
 
-          # Initialize the pipeline to run on CPU
-          pipe = ov_genai.LLMPipeline('qwen3_model', 'CPU')
+          out_dir = Path(os.environ["OUT_DIR"])
+          prompt = Path(os.environ["PROMPT_FILE"]).read_text(encoding="utf-8")
+          card = Path(os.environ["INPUT_FILE"]).read_text(encoding="utf-8")
+          body = {
+              "messages": [{"role": "user", "content": prompt.replace("{model_card}", card)}],
+              "response_format": {"type": "json_object"},
+              "temperature": 0,
+              "max_tokens": 256,
+          }
+          request = urllib.request.Request(
+              "http://127.0.0.1:8080/v1/chat/completions",
+              data=json.dumps(body).encode(),
+              headers={"Content-Type": "application/json"},
+          )
+          with urllib.request.urlopen(request, timeout=600) as response:  # noqa: S310
+              reply = json.load(response)
+          content = reply["choices"][0]["message"]["content"]
+          (out_dir / "response.json").write_text(content, encoding="utf-8")
 
-          # Run generation
-          prompt = 'Explain the concept of functional safety in robotics in two sentences.'
-          print(f'\n--- Prompt: {prompt} ---')
+          try:
+              highlight = json.loads(content)["highlight"]
+          except (json.JSONDecodeError, KeyError, TypeError) as error:
+              print(f"::error::model did not return the expected JSON: {error}")
+              sys.exit(1)
 
-          response = pipe.generate(prompt, max_new_tokens=100)
-          print('\n--- Response: ---')
-          print(response)
-          "
+          words = len(highlight.split()) if isinstance(highlight, str) else 0
+          with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as summary:
+              summary.write("### Model highlight\n\n")
+              summary.write(f"> {highlight}\n\n")
+              summary.write(f"- Words: {words} (target 15-25, max 30)\n")
+              summary.write(f"- Tokens: `{reply.get('usage')}`\n")
+          print(content)
+          if words > 30:
+              print("::warning::highlight exceeds 30 words")
+          PY
+
+      - name: Upload summary
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: llm-summary-${{ github.run_id }}
+          path: llm-summary/
+          if-no-files-found: warn
+          retention-days: 7
+
+      - name: Stop llama-server
+        if: always()
+        run: |
+          if [ -n "${LLAMA_PID:-}" ]; then
+            kill "${LLAMA_PID}" 2>/dev/null || true
+          fi
