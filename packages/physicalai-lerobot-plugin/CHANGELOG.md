@@ -1,5 +1,24 @@
 # Changelog
 
+## [0.5.0](https://github.com/AlexanderBarabanov/physicalai/compare/physicalai-lerobot-plugin-v0.4.0...physicalai-lerobot-plugin-v0.5.0) (2026-11-06)
+
+
+### ✨ Features
+
+* add `physicalai-lerobot-plugin` ([#265](https://github.com/AlexanderBarabanov/physicalai/issues/265)) ([4ec496b](https://github.com/AlexanderBarabanov/physicalai/commit/4ec496b6067c101b8ac50beca65a25a89b6c4a9a))
+
+
+### 🐛 Bug Fixes
+
+* **lerobot:** improve lerobot calibration error handling ([#426](https://github.com/AlexanderBarabanov/physicalai/issues/426)) ([eaa2452](https://github.com/AlexanderBarabanov/physicalai/commit/eaa245231cc1308bd44be3552f12335716cc072c))
+* **lerobot:** restore typed configs in robot workers ([#434](https://github.com/AlexanderBarabanov/physicalai/issues/434)) ([1996cf7](https://github.com/AlexanderBarabanov/physicalai/commit/1996cf76a85346ffe4c00a3b29a556066e64014f))
+
+
+### 🔧 Chores
+
+* deprecate `RobotAdapterOptions` ([#374](https://github.com/AlexanderBarabanov/physicalai/issues/374)) ([0ca5b8e](https://github.com/AlexanderBarabanov/physicalai/commit/0ca5b8e06c132aa2c83aa7a92bc6dfb79a7b231f))
+* **main:** release physicalai-lerobot-plugin 0.4.0 ([#280](https://github.com/AlexanderBarabanov/physicalai/issues/280)) ([04f067a](https://github.com/AlexanderBarabanov/physicalai/commit/04f067af8cc9e79723c486d86e2c73a0bf16fff4))
+
 ## [0.4.0](https://github.com/openvinotoolkit/physicalai/compare/physicalai-lerobot-plugin-v0.3.1...physicalai-lerobot-plugin-v0.4.0) (2026-09-15)
 
 
