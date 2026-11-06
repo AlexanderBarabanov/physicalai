@@ -248,9 +248,16 @@ def run_merge(harness: str, harness_dir: Path) -> int:
     for data in _control_seed_bytes(harness):
         (merged / hashlib.sha256(data).hexdigest()).write_bytes(data)
     before = {path.name for path in merged.iterdir()}
-    harness_path = _FUZZ_DIR / "harnesses" / f"fuzz_{harness}.py"
+    harness_path = (_FUZZ_DIR / "harnesses" / f"fuzz_{harness}.py").resolve()
     log_path = harness_dir / "merge.log"
-    command = [sys.executable, str(harness_path), *_MERGE_FLAGS, str(merged), str(harness_dir / "raw")]
+    # libFuzzer re-executes argv[0] through sh in merge mode, so it must be an executable file.
+    launcher = (harness_dir / "run_harness.py").resolve()
+    launcher.write_text(
+        f"#!{sys.executable}\nimport runpy\nrunpy.run_path({str(harness_path)!r}, run_name='__main__')\n",
+        encoding="utf-8",
+    )
+    launcher.chmod(0o700)
+    command = [str(launcher), *_MERGE_FLAGS, str(merged.resolve()), str((harness_dir / "raw").resolve())]
     with log_path.open("wb") as log:
         try:
             result = subprocess.run(  # noqa: S603 - fixed argv, no shell
@@ -266,6 +273,10 @@ def run_merge(harness: str, harness_dir: Path) -> int:
             raise MergeError(msg) from error
     if result.returncode != 0:
         msg = f"merge exited with code {result.returncode}; see {log_path}"
+        raise MergeError(msg)
+    # libFuzzer exits 0 even when every inner process failed; a retry means the merge did not work.
+    if "MERGE-OUTER: attempt 2" in log_path.read_text(encoding="utf-8", errors="replace"):
+        msg = f"merge inner process failed and was retried; see {log_path}"
         raise MergeError(msg)
     new_files = sorted(path for path in merged.iterdir() if path.name not in before)
     for path in new_files:

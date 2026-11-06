@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import subprocess
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -221,6 +222,11 @@ def test_refuses_existing_output_unless_overwrite(tmp_path: Path) -> None:
 def test_merge_moves_new_files_to_added(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     def fake_merge(command: list[str], **_kwargs: object) -> subprocess.CompletedProcess[bytes]:
         assert "-merge=1" in command
+        launcher = Path(command[0])
+        assert launcher.read_text(encoding="utf-8").startswith("#!")
+        assert "fuzz_manifest_json.py" in launcher.read_text(encoding="utf-8")
+        if os.name == "posix":
+            assert os.access(launcher, os.X_OK)
         merged_dir = Path(command[-2])
         assert list(merged_dir.iterdir()), "control seeds must be in the merge target first"
         (merged_dir / "new_coverage_seed").write_bytes(b"{}")
@@ -234,6 +240,18 @@ def test_merge_moves_new_files_to_added(tmp_path: Path, monkeypatch: pytest.Monk
     assert [path.name for path in (harness_dir / "added").iterdir()] == ["new_coverage_seed"]
     assert not (harness_dir / "merged" / "new_coverage_seed").exists()
     assert _run_info(tmp_path, "manifest_json")["merge_added"] == 1
+
+
+def test_merge_with_retried_inner_process_is_an_error(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    def fake_merge(command: list[str], **kwargs: object) -> subprocess.CompletedProcess[bytes]:
+        kwargs["stdout"].write(b"MERGE-OUTER: attempt 1\nMERGE-OUTER: attempt 2\n")  # type: ignore[attr-defined]
+        return subprocess.CompletedProcess(command, 0)
+
+    monkeypatch.setattr(generate_seeds.subprocess, "run", fake_merge)
+    with _FakeLLM([_seeds(_MANIFEST)]) as llm:
+        assert _run(tmp_path, llm.url, "manifest_json", "--merge") == 1
+
+    assert not list((tmp_path / "manifest_json" / "added").iterdir())
 
 
 def test_merge_failure_returns_error(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
