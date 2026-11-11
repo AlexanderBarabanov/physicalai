@@ -142,6 +142,19 @@ the timed fuzzing campaign begins. Seeds do not prove that code is fully covered
 Successful daily and `workflow_dispatch` runs upload one `corpus-<harness>-<run-id>` artifact per harness for
 seven days.
 
+### LLM-generated seeds (PoC)
+
+Harnesses marked `llm_seeds: true` in `fuzz.yml` (currently `manifest`) get about 40 extra `llm-*.bin` seeds
+generated at job time by a small local model (Qwen2.5-0.5B-Instruct Q4_K_M via llama.cpp). Nothing is committed or
+cached. The step is best-effort: if it fails, fuzzing starts with the static seeds. Generation runs in an isolated
+`uv` environment and the model download is pinned by revision and SHA-256.
+
+- `llm/gen_seeds.py` - generator; wraps each JSON reply in the bytes the harness's `FuzzedDataProvider` expects.
+- `llm/prompts/<harness>.txt` - prompt template, then a `### THEMES` marker followed by one adversarial theme per line.
+
+To add a harness, add an encoder in `gen_seeds.py`, a prompt file, and `llm_seeds: true` to its matrix entry. Compare
+the `INITED cov/ft` line in the fuzzer log with and without the step (`workflow_dispatch` input `llm_seeds`).
+
 ### Review and promote a saved corpus
 
 Use this process to turn temporary corpus files into permanent regression seeds:

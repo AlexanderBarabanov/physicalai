@@ -11,6 +11,10 @@ on:
         description: "Fuzzing duration per target (seconds)"
         default: "1800"
         required: false
+      llm_seeds:
+        description: "Add LLM-generated seeds (harnesses with llm_seeds: true)"
+        type: boolean
+        default: true
   pull_request:
 
 permissions: {}
@@ -53,6 +57,7 @@ jobs:
           # Manifest / component instantiation
           - harness: manifest
             seed_dir: tests/fuzz/seeds/fuzz_manifest
+            llm_seeds: true
           - harness: component
             seed_dir: ""
           # Array processing pipeline
@@ -130,6 +135,39 @@ jobs:
           if [ -n "${{ matrix.seed_dir }}" ] && [ -d "${{ matrix.seed_dir }}" ]; then
             cp -rn "${{ matrix.seed_dir }}/." "tests/fuzz/corpus/${{ matrix.harness }}/" || true
           fi
+
+      # Best-effort: a failure here leaves the static seeds in place and fuzzing proceeds.
+      # Generation runs in an isolated uv env so llama.cpp never enters the fuzzing venv.
+      - name: Generate LLM seeds
+        if: ${{ matrix.llm_seeds && github.event.inputs.llm_seeds != 'false' }}
+        continue-on-error: true
+        timeout-minutes: 10
+        env:
+          HARNESS: ${{ matrix.harness }}
+          SEED_DIR: ${{ matrix.seed_dir }}
+          MODEL_REV: 9217f5db79a29953eb74d5343926648285ec7e67
+          MODEL_SHA256: 74a4da8c9fdbcd15bd1f6d01d621410d31c6fc00986f5eb687824e7b93d7a9db
+        run: |
+          set -euo pipefail
+          model="${RUNNER_TEMP}/qwen2.5-0.5b-instruct-q4_k_m.gguf"
+          curl -fsSL --retry 3 -o "${model}" \
+            "https://huggingface.co/Qwen/Qwen2.5-0.5B-Instruct-GGUF/resolve/${MODEL_REV}/qwen2.5-0.5b-instruct-q4_k_m.gguf"
+          echo "${MODEL_SHA256}  ${model}" | sha256sum -c -
+
+          uv run python -c 'import json; from physicalai.inference.manifest import Manifest; print(json.dumps(Manifest.model_json_schema(), separators=(",", ":")))' > "${RUNNER_TEMP}/schema.json"
+          jq -c . "${SEED_DIR}/seed_full.json" > "${RUNNER_TEMP}/example.json"
+
+          uv run --no-project --python 3.12 \
+            --with "llama-cpp-python==0.3.36" \
+            --extra-index-url https://abetlen.github.io/llama-cpp-python/whl/cpu \
+            --no-build-package llama-cpp-python \
+            python tests/fuzz/llm/gen_seeds.py \
+              --harness "${HARNESS}" \
+              --model "${model}" \
+              --schema "${RUNNER_TEMP}/schema.json" \
+              --example "${RUNNER_TEMP}/example.json" \
+              --out "tests/fuzz/corpus/${HARNESS}" \
+              --n 40 --budget-s 180
 
       # ── Fuzzing run ───────────────────────────────────────────────────────
       - name: Run fuzzer

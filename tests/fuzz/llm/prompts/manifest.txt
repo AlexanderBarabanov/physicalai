@@ -1,0 +1,26 @@
+Create one test input for a parser of "policy package" manifests (JSON).
+
+JSON schema of a valid manifest:
+{schema}
+
+Example of a valid manifest:
+{example}
+
+The input should be structurally similar to the example but must stress the parser and its validators.
+Keep it under 60 lines. Use only ASCII characters in the JSON text (escape others as \uXXXX).
+Focus for this input: {theme}
+### THEMES
+shapes with negative, zero or very large dimensions
+n_obs_steps with huge, negative, zero, float or string values
+wrong value types: arrays where objects are expected, objects where strings are expected, null everywhere
+missing required keys, and unknown extra keys
+policy name and class_path strings with path separators, dots, "../", null bytes or very long values
+artifact paths that are absolute, contain "..", or are empty
+components using "class_path" and "init_args" with deeply nested init_args
+components using "type" with unknown or mixed-case type names
+dtype strings that are unknown, empty or numeric
+robot state/action "order" lists that disagree with their "shape"
+version and format strings that are unusual (empty, very long, non-semver)
+a manifest that is almost valid, with exactly one field broken
+unicode escapes, control characters and very long strings in names and metadata
+empty lists and empty objects for every container field
