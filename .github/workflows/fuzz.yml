@@ -139,6 +139,7 @@ jobs:
       # Best-effort: a failure here leaves the static seeds in place and fuzzing proceeds.
       # Generation runs in an isolated uv env so llama.cpp never enters the fuzzing venv.
       - name: Generate LLM seeds
+        id: llm_seeds
         if: ${{ matrix.llm_seeds && github.event.inputs.llm_seeds != 'false' }}
         continue-on-error: true
         timeout-minutes: 10
@@ -157,6 +158,8 @@ jobs:
           uv run python -c 'import json; from physicalai.inference.manifest import Manifest; print(json.dumps(Manifest.model_json_schema(), separators=(",", ":")))' > "${RUNNER_TEMP}/schema.json"
           jq -c . "${SEED_DIR}/seed_full.json" > "${RUNNER_TEMP}/example.json"
 
+          report="llm-seeds-report/${HARNESS}"
+          mkdir -p "${report}"
           uv run --no-project --python 3.12 \
             --with "llama-cpp-python==0.3.36" \
             --extra-index-url https://abetlen.github.io/llama-cpp-python/whl/cpu \
@@ -167,7 +170,8 @@ jobs:
               --schema "${RUNNER_TEMP}/schema.json" \
               --example "${RUNNER_TEMP}/example.json" \
               --out "tests/fuzz/corpus/${HARNESS}" \
-              --n 40 --budget-s 180
+              --report-dir "${report}" \
+              --n 40 --budget-s 180 2>&1 | tee "${report}/generator.log"
 
       # ── Fuzzing run ───────────────────────────────────────────────────────
       - name: Run fuzzer
@@ -213,6 +217,53 @@ jobs:
           else
             echo "crashes_found=false" >> "$GITHUB_OUTPUT"
           fi
+
+      # Debugging aid for the LLM seeds PoC: per-attempt table, sample seeds, and corpus-load coverage.
+      - name: Report LLM seeds
+        if: ${{ always() && steps.llm_seeds.conclusion != 'skipped' }}
+        env:
+          HARNESS: ${{ matrix.harness }}
+        run: |
+          report="llm-seeds-report/${HARNESS}"
+          mkdir -p "${report}"
+          cp -f "fuzz_output_${HARNESS}.txt" "${report}/" || true
+          {
+            echo "### LLM seeds: ${HARNESS}"
+            echo
+            if [ -f "${report}/attempts.jsonl" ]; then
+              echo '```'
+              tail -n 1 "${report}/generator.log"
+              echo '```'
+              echo
+              echo "| theme | status | seconds | bytes |"
+              echo "|---|---|---|---|"
+              jq -r '"| \(.theme) | \(.status) | \(.seconds) | \(.bytes // "-") |"' "${report}/attempts.jsonl"
+            else
+              echo "Generator produced no report; see the Generate LLM seeds step."
+            fi
+            echo
+            echo "libFuzzer corpus load (INITED) and final (DONE) lines:"
+            echo '```'
+            grep -E ' (INITED|DONE) ' "fuzz_output_${HARNESS}.txt" || true
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          echo "::group::Sample LLM seeds (first 3, prefix bytes stripped)"
+          for f in $(ls "${report}/seeds" 2>/dev/null | head -n 3); do
+            echo "--- ${f}"
+            tail -c +3 "${report}/seeds/${f}" | head -c 800
+            echo
+          done
+          echo "::endgroup::"
+
+      - name: Upload LLM seeds report
+        if: ${{ always() && steps.llm_seeds.conclusion != 'skipped' }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: llm-seeds-${{ matrix.harness }}-${{ github.run_id }}
+          path: llm-seeds-report/${{ matrix.harness }}/
+          if-no-files-found: warn
+          retention-days: 7
 
       - name: Summarize fuzz metrics
         if: ${{ always() && github.event_name == 'schedule' }}
