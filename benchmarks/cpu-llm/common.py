@@ -16,9 +16,10 @@ from pathlib import Path
 
 import psutil
 
-HF_MODEL = "Qwen/Qwen2.5-0.5B-Instruct"
-GGUF_REPO = "Qwen/Qwen2.5-0.5B-Instruct-GGUF"
-GGUF_FILE = "qwen2.5-0.5b-instruct-q4_k_m.gguf"
+HF_MODEL = "Qwen/Qwen2.5-1.5B-Instruct"
+OV_REPO = "OpenVINO/Qwen2.5-1.5B-Instruct-int4-ov"
+GGUF_REPO = "Qwen/Qwen2.5-1.5B-Instruct-GGUF"
+GGUF_FILE = "qwen2.5-1.5b-instruct-q4_k_m.gguf"
 OLLAMA_TAG = "qwen-bench"
 OLLAMA_HOST = "127.0.0.1:11435"
 PROMPT_TOKENS = {"short": 32, "long": 512}
@@ -44,7 +45,6 @@ PACKAGES = (
     "openvino",
     "openvino-genai",
     "openvino-tokenizers",
-    "optimum-intel",
     "torch",
     "transformers",
     "llama-cpp-python",

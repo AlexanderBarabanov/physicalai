@@ -1,18 +1,20 @@
 # CPU LLM inference benchmark
 
-Compares CPU inference of `Qwen/Qwen2.5-0.5B-Instruct` on a GitHub-hosted `ubuntu-latest` runner (4 vCPUs, 16 GB RAM, ~14 GB disk) across:
+Compares CPU inference of `Qwen/Qwen2.5-1.5B-Instruct` on a GitHub-hosted `ubuntu-latest` runner (4 vCPUs, 16 GB RAM, ~14 GB disk) across:
 
 | Engine key | Engine | Weights |
 |---|---|---|
-| `openvino_ir_int4` | OpenVINO GenAI | OpenVINO IR, INT4 weight compression |
-| `openvino_gguf` | OpenVINO GenAI GGUF reader | `qwen2.5-0.5b-instruct-q4_k_m.gguf` |
+| `openvino_ir_int4` | OpenVINO GenAI | Prebuilt [OpenVINO/Qwen2.5-1.5B-Instruct-int4-ov](https://huggingface.co/OpenVINO/Qwen2.5-1.5B-Instruct-int4-ov) |
+| `openvino_gguf` | OpenVINO GenAI GGUF reader | `qwen2.5-1.5b-instruct-q4_k_m.gguf` |
 | `pytorch_cpu` | `transformers` + `torch` | Original weights, FP32 (or BF16) |
-| `llama_cpp` | `llama-cpp-python` | `qwen2.5-0.5b-instruct-q4_k_m.gguf` |
+| `llama_cpp` | `llama-cpp-python` | `qwen2.5-1.5b-instruct-q4_k_m.gguf` |
 | `ollama` | Ollama daemon, local HTTP API | The same GGUF file, registered as `qwen-bench` |
+
+The 1.5B model is used because Intel publishes a prebuilt INT4 OpenVINO IR for it; there is none for 0.5B, and exporting on the runner with `optimum-cli` failed.
 
 ## Files
 
-- [prepare_models.py](prepare_models.py): downloads the base model, exports OpenVINO INT4 IR, downloads the GGUF, builds the 32 and 512 token prompts, writes `Modelfile` and runs `ollama create qwen-bench`.
+- [prepare_models.py](prepare_models.py): downloads the base model, the prebuilt OpenVINO INT4 IR and the GGUF, builds the 32 and 512 token prompts, writes `Modelfile` and runs `ollama create qwen-bench`.
 - [benchmark.py](benchmark.py): runs every engine in its own subprocess and writes `results.json` and `results.md`.
 - [common.py](common.py): hardware report, disk guard, Ollama daemon helpers.
 - [../../.github/workflows/cpu-llm-benchmark.yml](../../.github/workflows/cpu-llm-benchmark.yml): CI workflow.
@@ -26,7 +28,7 @@ The workflow runs on `workflow_dispatch` and on pushes that touch `benchmarks/cp
 ```bash
 cd benchmarks/cpu-llm
 python -m pip install torch --index-url https://download.pytorch.org/whl/cpu
-python -m pip install openvino-genai "optimum[openvino]" transformers psutil tabulate huggingface_hub
+python -m pip install openvino-genai transformers psutil tabulate huggingface_hub
 CMAKE_ARGS="-DGGML_NATIVE=ON" python -m pip install llama-cpp-python
 # install Ollama from https://ollama.com/download
 

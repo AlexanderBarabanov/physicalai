@@ -3,8 +3,8 @@
 
 Layout produced under --models-dir (default ./models):
     hf_base/                              original HF weights (PyTorch baseline, export source)
-    ov_ir_int4/                           OpenVINO IR with INT4 weight compression
-    qwen2.5-0.5b-instruct-q4_k_m.gguf     shared by openvino_gguf, llama.cpp and Ollama
+    ov_ir_int4/                           prebuilt OpenVINO IR INT4 (OpenVINO/Qwen2.5-1.5B-Instruct-int4-ov)
+    qwen2.5-1.5b-instruct-q4_k_m.gguf     shared by openvino_gguf, llama.cpp and Ollama
     prompts.json                          32 and 512 token prompts (identical text for all engines)
 Plus ./Modelfile and the `qwen-bench` model registered in Ollama.
 """
@@ -23,6 +23,7 @@ from common import (
     GGUF_REPO,
     HF_MODEL,
     OLLAMA_TAG,
+    OV_REPO,
     PROMPT_TOKENS,
     ensure_disk,
     ollama_env,
@@ -65,16 +66,10 @@ def download_base(models_dir: Path, hf_model: str) -> Path:
     return target
 
 
-def export_openvino_int4(base_dir: Path, out_dir: Path) -> None:
-    if (out_dir / "openvino_model.xml").exists():
-        print(f"[skip] {out_dir} already exists", flush=True)
-        return
-    exe = shutil.which("optimum-cli", path=str(Path(sys.executable).parent)) or shutil.which("optimum-cli")
-    if exe is None:
-        msg = "optimum-cli not found; install optimum[openvino]"
-        raise FileNotFoundError(msg)
-    # Local snapshot of HF_MODEL, so the weights are not downloaded a second time.
-    run([exe, "export", "openvino", "--model", str(base_dir), "--weight-format", "int4", str(out_dir)])
+def download_openvino_int4(out_dir: Path) -> None:
+    from huggingface_hub import snapshot_download
+
+    snapshot_download(repo_id=OV_REPO, local_dir=out_dir)
 
 
 def download_gguf(models_dir: Path) -> Path:
@@ -133,7 +128,7 @@ def main() -> int:
 
     ensure_disk()
     base_dir = download_base(models_dir, args.hf_model)
-    export_openvino_int4(base_dir, models_dir / "ov_ir_int4")
+    download_openvino_int4(models_dir / "ov_ir_int4")
     ensure_disk()
     download_gguf(models_dir)
     build_prompts(base_dir, models_dir / "prompts.json")

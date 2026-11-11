@@ -27,6 +27,7 @@ from pathlib import Path
 import psutil
 from common import (
     GGUF_FILE,
+    HF_MODEL,
     OLLAMA_TAG,
     ensure_disk,
     hardware_info,
@@ -532,7 +533,7 @@ def run_orchestrator(args: argparse.Namespace) -> int:
         "environment": env,
         "versions": package_versions(),
         "config": {
-            "model": "Qwen/Qwen2.5-0.5B-Instruct", "max_new_tokens": args.max_new_tokens, "runs": args.runs,
+            "model": HF_MODEL, "max_new_tokens": args.max_new_tokens, "runs": args.runs,
             "warmup": args.warmup, "threads": args.threads, "torch_dtype": args.torch_dtype, "temperature": 0.0,
         },
         "engines": {},
