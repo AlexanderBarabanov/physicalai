@@ -1,0 +1,95 @@
+name: CPU LLM Benchmark
+
+on:
+  workflow_dispatch:
+    inputs:
+      runs:
+        description: "Measured runs per prompt per engine"
+        default: "3"
+        required: false
+  push:
+    paths:
+      - "benchmarks/cpu-llm/**"
+      - ".github/workflows/cpu-llm-benchmark.yml"
+
+permissions: {}
+
+concurrency:
+  group: cpu-llm-benchmark-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  benchmark:
+    name: Benchmark (ubuntu-latest, CPU)
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    permissions:
+      contents: read
+    env:
+      HF_HUB_DISABLE_TELEMETRY: "1"
+      TOKENIZERS_PARALLELISM: "false"
+      PIP_DISABLE_PIP_VERSION_CHECK: "1"
+    defaults:
+      run:
+        working-directory: benchmarks/cpu-llm
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.11"
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends cmake build-essential curl zstd
+
+      # Release tarball instead of the install script: no systemd unit, no pipe-to-shell.
+      - name: Install Ollama
+        run: |
+          curl -fsSL -o "$RUNNER_TEMP/ollama.tar.zst" https://ollama.com/download/ollama-linux-amd64.tar.zst
+          sudo tar -C /usr -xf "$RUNNER_TEMP/ollama.tar.zst"
+          rm "$RUNNER_TEMP/ollama.tar.zst"
+          ollama --version
+
+      # CPU-only torch wheel keeps ~2 GB of CUDA libraries off the 14 GB disk.
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install torch --index-url https://download.pytorch.org/whl/cpu
+          python -m pip install openvino-genai "optimum[openvino]" transformers psutil tabulate huggingface_hub
+          CMAKE_ARGS="-DGGML_NATIVE=ON" python -m pip install --no-cache-dir llama-cpp-python
+          python -m pip cache purge
+          df -h .
+
+      - name: Prepare models
+        run: python prepare_models.py
+
+      - name: Run benchmark
+        env:
+          RUNS: ${{ inputs.runs }}
+        run: python benchmark.py --runs "${RUNS:-3}"
+
+      - name: Publish summary
+        if: always()
+        run: |
+          if [ -f results.md ]; then
+            cat results.md >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "Benchmark did not produce results.md" >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Upload results
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: cpu-llm-benchmark-results
+          path: |
+            benchmarks/cpu-llm/results.json
+            benchmarks/cpu-llm/results.md
+            benchmarks/cpu-llm/logs/
+          if-no-files-found: warn
