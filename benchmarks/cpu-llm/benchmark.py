@@ -172,13 +172,15 @@ class OpenVinoEngine:
         cfg.do_sample = False
         cfg.ignore_eos = True
         t0 = time.perf_counter()
-        result = self.pipe.generate(prompt["text"], cfg)
+        # A list input is required for generate() to return DecodedResults with perf_metrics.
+        result = self.pipe.generate([prompt["text"]], cfg)
         t1 = time.perf_counter()
         pm = result.perf_metrics
         ttft = pm.get_ttft().mean
+        hit_tokens = pm.get_num_prefix_cache_hit_tokens() if hasattr(pm, "get_num_prefix_cache_hit_tokens") else None
         return make_run(
             pm.get_num_input_tokens(), pm.get_num_generated_tokens(), t0, None, t1, ttft_ms=ttft,
-            native_ttft_ms=ttft, native_tpot_ms=pm.get_tpot().mean,
+            native_ttft_ms=ttft, native_tpot_ms=pm.get_tpot().mean, prefix_cache_hit_tokens=hit_tokens,
         )
 
     def close(self) -> None:
@@ -467,6 +469,7 @@ Native columns (`Native TTFT`, `Native TPOT`) come from each engine's own counte
 - **Not bit-identical weights.** OpenVINO IR INT4 (NNCF) and GGUF Q4_K_M use different 4-bit schemes; PyTorch runs the unquantized model. Speed differences include precision differences, and output text can differ.
 - **GitHub-hosted runners are shared VMs.** Expect run-to-run noise; read StdDev and compare engines from the same run, not across runs or CPU models.
 - **Decode is bandwidth-bound**, so engines on the same quantized GGUF (llama.cpp, Ollama, OpenVINO GGUF) are expected to land close on TPOT, while TTFT separates kernel quality.
+- **Threading.** PyTorch, llama.cpp and Ollama are pinned to all vCPUs. OpenVINO runs with its own latency-hint defaults, which on a hyper-threaded VM typically means one thread per physical core.
 - **Token counts** are reported per run; a count below 128 means the engine stopped on EOS (Ollama cannot ban EOS) and its TPOT is averaged over fewer tokens.
 """
 
