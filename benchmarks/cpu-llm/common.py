@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import os
 import platform
+import re
 import shutil
 import subprocess
 import sys
@@ -98,7 +99,8 @@ def package_versions() -> dict:
         except metadata.PackageNotFoundError:
             versions[name] = None
     if shutil.which("ollama"):
-        versions["ollama"] = _run_text(["ollama", "--version"]) or None
+        match = re.search(r"version is (\S+)", _run_text(["ollama", "--version"]))
+        versions["ollama"] = match.group(1) if match else None
     return versions
 
 

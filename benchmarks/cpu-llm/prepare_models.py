@@ -5,7 +5,7 @@ Layout produced under --models-dir (default ./models):
     hf_base/                              original HF weights (PyTorch baseline, export source)
     ov_ir_int4/                           prebuilt OpenVINO IR INT4 (OpenVINO/Qwen2.5-1.5B-Instruct-int4-ov)
     qwen2.5-1.5b-instruct-q4_k_m.gguf     shared by openvino_gguf, llama.cpp and Ollama
-    prompts.json                          32 and 512 token prompts (identical text for all engines)
+    prompts.json                          16 unique-start variants each of a 32 and a 512 token prompt
 Plus ./Modelfile and the `qwen-bench` model registered in Ollama.
 """
 
@@ -31,6 +31,10 @@ from common import (
     stop_ollama_server,
 )
 
+LEADS = (
+    "Note", "Report", "Memo", "Essay", "Draft", "Brief", "Review", "Article",
+    "Summary", "Guide", "Paper", "Study", "Letter", "Journal", "Digest", "Bulletin",
+)
 SHORT_SOURCE = (
     "The history of computing spans centuries, from early mechanical calculators to modern processors. "
     "In this essay we will examine how engineers made computers faster, smaller and cheaper, and why "
@@ -86,17 +90,22 @@ def build_prompts(base_dir: Path, out_file: Path) -> None:
     prompts = {}
     for name, source in (("short", SHORT_SOURCE), ("long", LONG_SOURCE)):
         target = PROMPT_TOKENS[name]
-        ids = tok(source * (target // 20 + 2), add_special_tokens=False)["input_ids"]
-        text, count = None, 0
-        # Decode/encode is not always a perfect round trip, so back off until the count matches.
-        for cut in range(target, target - 16, -1):
-            candidate = tok.decode(ids[:cut])
-            count = len(tok(candidate, add_special_tokens=False)["input_ids"])
-            text = candidate
-            if count == target:
-                break
-        prompts[name] = {"text": text, "tokens": count, "target_tokens": target}
-        print(f"[prompt] {name}: {count} tokens (target {target})", flush=True)
+        variants = []
+        for lead in LEADS:
+            # A different first word per variant means no engine can reuse a cached prefix between calls.
+            ids = tok(f"{lead}: " + source * (target // 20 + 2), add_special_tokens=False)["input_ids"]
+            text, count = None, 0
+            # Decode/encode is not always a perfect round trip, so back off until the count matches.
+            for cut in range(target, target - 16, -1):
+                candidate = tok.decode(ids[:cut])
+                count = len(tok(candidate, add_special_tokens=False)["input_ids"])
+                text = candidate
+                if count == target:
+                    break
+            variants.append({"text": text, "tokens": count})
+        counts = sorted({v["tokens"] for v in variants})
+        prompts[name] = {"target_tokens": target, "variants": variants}
+        print(f"[prompt] {name}: {len(variants)} variants, token counts {counts} (target {target})", flush=True)
     out_file.write_text(json.dumps(prompts, indent=2), encoding="utf-8")
 
 

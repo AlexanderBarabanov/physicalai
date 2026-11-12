@@ -39,9 +39,10 @@ from common import (
     stop_ollama_server,
 )
 
-ENGINES = ["openvino_ir_int4", "openvino_gguf", "pytorch_cpu", "llama_cpp", "ollama"]
+ENGINES = ["openvino_ir_int4", "openvino_ir_int4_all_threads", "openvino_gguf", "pytorch_cpu", "llama_cpp", "ollama"]
 LABELS = {
     "openvino_ir_int4": "OpenVINO GenAI (IR INT4)",
+    "openvino_ir_int4_all_threads": "OpenVINO GenAI (IR INT4, all vCPU threads)",
     "openvino_gguf": "OpenVINO GenAI (GGUF Q4_K_M)",
     "pytorch_cpu": "PyTorch CPU",
     "llama_cpp": "llama.cpp (GGUF Q4_K_M)",
@@ -153,24 +154,27 @@ def summarize(runs: list[dict]) -> dict:
 
 
 class OpenVinoEngine:
-    def __init__(self, path: Path) -> None:
+    def __init__(self, path: Path, num_threads: int | None = None) -> None:
         if not path.exists():
             raise FileNotFoundError(path)
         import openvino_genai as ov_genai
 
         self._ov = ov_genai
         self.path = path
+        self.properties = {"INFERENCE_NUM_THREADS": num_threads} if num_threads else {}
         self.pipe = None
-        self.details = {"model_path": str(path), "device": "CPU"}
+        self.details = {"model_path": str(path), "device": "CPU", "properties": self.properties}
 
     def load(self) -> None:
-        self.pipe = self._ov.LLMPipeline(str(self.path), "CPU")
+        self.pipe = self._ov.LLMPipeline(str(self.path), "CPU", **self.properties)
 
     def generate(self, prompt: dict, max_new: int) -> dict:
         cfg = self._ov.GenerationConfig()
         cfg.max_new_tokens = max_new
         cfg.do_sample = False
         cfg.ignore_eos = True
+        # Default is True: the Qwen chat template would add ~29 tokens the other engines never see.
+        cfg.apply_chat_template = False
         t0 = time.perf_counter()
         # A list input is required for generate() to return DecodedResults with perf_metrics.
         result = self.pipe.generate([prompt["text"]], cfg)
@@ -385,6 +389,8 @@ def make_engine(name: str, args: argparse.Namespace):
     models = Path(args.models_dir)
     if name == "openvino_ir_int4":
         return OpenVinoEngine(models / "ov_ir_int4")
+    if name == "openvino_ir_int4_all_threads":
+        return OpenVinoEngine(models / "ov_ir_int4", num_threads=args.threads)
     if name == "openvino_gguf":
         return OpenVinoEngine(models / GGUF_FILE)
     if name == "pytorch_cpu":
@@ -398,6 +404,14 @@ def make_engine(name: str, args: argparse.Namespace):
 
 
 # ----------------------------------------------------------------------------- worker
+
+
+def timed_call(engine, variant: dict, max_new: int) -> dict:
+    run = engine.generate(variant, max_new)
+    run["expected_prompt_tokens"] = variant["tokens"]
+    # The engine's own tokenizer count must match the target, otherwise engines did different work.
+    run["prompt_tokens_mismatch"] = abs(run["prompt_tokens"] - variant["tokens"]) > 2
+    return run
 
 
 def run_worker(name: str, args: argparse.Namespace) -> dict:
@@ -416,11 +430,16 @@ def run_worker(name: str, args: argparse.Namespace) -> dict:
         result["rss_after_load_mb"] = sampler.current_mb()
         sampler.take_window_mb()
         result["prompts"] = {}
-        for pname, prompt in prompts.items():
+        for pname, entry in prompts.items():
+            # Every call (warmup included) gets a distinct prompt so no KV or prefix cache can skip prefill.
+            variants = iter(entry["variants"])
+            if len(entry["variants"]) < args.warmup + args.runs:
+                msg = f"only {len(entry['variants'])} prompt variants for {args.warmup + args.runs} calls"
+                raise ValueError(msg)
             for _ in range(args.warmup):
-                engine.generate(prompt, args.max_new_tokens)
+                timed_call(engine, next(variants), args.max_new_tokens)
             sampler.take_window_mb()
-            runs = [engine.generate(prompt, args.max_new_tokens) for _ in range(args.runs)]
+            runs = [timed_call(engine, next(variants), args.max_new_tokens) for _ in range(args.runs)]
             result["prompts"][pname] = {
                 "runs": runs, "stats": summarize(runs), "peak_rss_mb": sampler.take_window_mb(),
             }
@@ -469,7 +488,8 @@ Native columns (`Native TTFT`, `Native TPOT`) come from each engine's own counte
 - **Not bit-identical weights.** OpenVINO IR INT4 (NNCF) and GGUF Q4_K_M use different 4-bit schemes; PyTorch runs the unquantized model. Speed differences include precision differences, and output text can differ.
 - **GitHub-hosted runners are shared VMs.** Expect run-to-run noise; read StdDev and compare engines from the same run, not across runs or CPU models.
 - **Decode is bandwidth-bound**, so engines on the same quantized GGUF (llama.cpp, Ollama, OpenVINO GGUF) are expected to land close on TPOT, while TTFT separates kernel quality.
-- **Threading.** PyTorch, llama.cpp and Ollama are pinned to all vCPUs. OpenVINO runs with its own latency-hint defaults, which on a hyper-threaded VM typically means one thread per physical core.
+- **Threading.** PyTorch, llama.cpp and Ollama are pinned to all vCPUs. The default OpenVINO row uses its own latency-hint defaults, which on a hyper-threaded VM typically means one thread per physical core; the "all vCPU threads" row sets `INFERENCE_NUM_THREADS` to match the others.
+- **Cache defeat.** Each call (warmup and measured) uses a different prompt variant of the same token length, so KV/prefix caches cannot skip prefill. Runs are flagged below if an engine's own token count differs from the target by more than 2 or reports prefix-cache hits.
 - **Token counts** are reported per run; a count below 128 means the engine stopped on EOS (Ollama cannot ban EOS) and its TPOT is averaged over fewer tokens.
 """
 
@@ -489,7 +509,7 @@ def render_markdown(results: dict) -> str:
         "",
     ]
     notes: list[str] = []
-    headers = ["Engine", "Load (ms)", "TTFT (ms)", "TPOT (ms/tok)", "Throughput (tok/s)", "E2E (ms)",
+    headers = ["Engine", "Load (ms)", "Prompt tok", "TTFT (ms)", "TPOT (ms/tok)", "Throughput (tok/s)", "E2E (ms)",
                "Peak RSS (MB)", "Native TTFT (ms)", "Native TPOT (ms/tok)", "Gen. tokens"]
     for pname in ("short", "long"):
         rows = []
@@ -504,15 +524,19 @@ def render_markdown(results: dict) -> str:
                 notes.append(f"{res['label']} ({pname}): generated {tokens:.0f} tokens instead of {cfg['max_new_tokens']}.")
             if any(r.get("prompt_cache_suspected") for r in p["runs"]):
                 notes.append(f"{res['label']} ({pname}): prompt cache hit suspected, TTFT may be understated.")
+            if any(r.get("prompt_tokens_mismatch") for r in p["runs"]):
+                notes.append(f"{res['label']} ({pname}): engine prompt token count differs from the target; TTFT is not comparable.")
+            if any(r.get("prefix_cache_hit_tokens") for r in p["runs"]):
+                notes.append(f"{res['label']} ({pname}): prefix cache reported hits; TTFT may be understated.")
+            ptok = st["prompt_tokens"]["mean"] if st["prompt_tokens"] else math.nan
             rows.append([
-                res["label"], f"{res['load_ms']:.0f}", _ms(st["ttft_ms"]), _ms(st["tpot_ms"], 2),
+                res["label"], f"{res['load_ms']:.0f}", f"{ptok:.0f}", _ms(st["ttft_ms"]), _ms(st["tpot_ms"], 2),
                 _ms(st["throughput_tps"]), _ms(st["e2e_ms"], 0), f"{p['peak_rss_mb']:.0f}",
                 _ms(st["native_ttft_ms"]), _ms(st["native_tpot_ms"], 2), f"{tokens:.0f}",
             ])
-        n_tok = next((r["prompts"][pname]["stats"]["prompt_tokens"]["mean"] for r in results["engines"].values()
-                      if r["status"] == "ok" and r["prompts"][pname]["stats"]["prompt_tokens"]), None)
+        n_tok = cfg.get("prompt_tokens", {}).get(pname)
         title = "Short prompt" if pname == "short" else "Long prompt"
-        lines += [f"## {title} (~{n_tok:.0f} input tokens)" if n_tok else f"## {title}", "",
+        lines += [f"## {title} ({n_tok} input tokens)" if n_tok else f"## {title}", "",
                   tabulate(rows, headers=headers, tablefmt="github"), ""]
     for name, res in results["engines"].items():
         if res["status"] != "ok":
@@ -538,6 +562,7 @@ def run_orchestrator(args: argparse.Namespace) -> int:
         "config": {
             "model": HF_MODEL, "max_new_tokens": args.max_new_tokens, "runs": args.runs,
             "warmup": args.warmup, "threads": args.threads, "torch_dtype": args.torch_dtype, "temperature": 0.0,
+            "prompt_tokens": {k: v["target_tokens"] for k, v in load_prompts(Path(args.models_dir)).items()},
         },
         "engines": {},
     }

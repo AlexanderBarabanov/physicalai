@@ -4,7 +4,8 @@ Compares CPU inference of `Qwen/Qwen2.5-1.5B-Instruct` on a GitHub-hosted `ubunt
 
 | Engine key | Engine | Weights |
 |---|---|---|
-| `openvino_ir_int4` | OpenVINO GenAI | Prebuilt [OpenVINO/Qwen2.5-1.5B-Instruct-int4-ov](https://huggingface.co/OpenVINO/Qwen2.5-1.5B-Instruct-int4-ov) |
+| `openvino_ir_int4` | OpenVINO GenAI | Prebuilt [OpenVINO/Qwen2.5-1.5B-Instruct-int4-ov](https://huggingface.co/OpenVINO/Qwen2.5-1.5B-Instruct-int4-ov), default threading |
+| `openvino_ir_int4_all_threads` | OpenVINO GenAI | Same model, `INFERENCE_NUM_THREADS` = all vCPUs (matches the other engines) |
 | `openvino_gguf` | OpenVINO GenAI GGUF reader | `qwen2.5-1.5b-instruct-q4_k_m.gguf` |
 | `pytorch_cpu` | `transformers` + `torch` | Original weights, FP32 (or BF16) |
 | `llama_cpp` | `llama-cpp-python` | `qwen2.5-1.5b-instruct-q4_k_m.gguf` |
@@ -44,14 +45,14 @@ Ollama listens on `127.0.0.1:11435` so it does not collide with a system Ollama 
 ## Protocol
 
 - Greedy decoding (`temperature=0`, top-k 1, repetition penalty 1.0, fixed seed), 128 new tokens.
-- Two prompts with identical text for every engine: ~32 tokens (decode-dominated) and ~512 tokens (prefill-dominated). No chat template is applied.
+- Two prompt lengths, ~32 tokens (decode-dominated) and ~512 tokens (prefill-dominated), with the same text for every engine and no chat template (`apply_chat_template=False` for OpenVINO). Each call, warmup included, uses a different variant (different first word) of the same length, so KV and prefix caches cannot skip prefill; at most 16 calls per prompt are supported.
 - 1 discarded warmup plus 3 measured runs per prompt; Mean and StdDev (sample) are reported.
 - Each engine runs in a fresh subprocess, so memory is returned to the OS between engines. If free disk falls below 3 GB the Hugging Face and pip caches are deleted.
 - The CPU model (`lscpu`), ISA flags (AVX2, AVX-512, VNNI, AMX), vCPU count and RAM are printed at the start and stored in `results.json`.
 
 EOS handling: OpenVINO uses `ignore_eos`, PyTorch uses `min_new_tokens`, llama.cpp bans the EOS tokens through `logit_bias`. Ollama has no equivalent option, so the number of generated tokens is recorded and flagged in the report when it differs from 128.
 
-Ollama keeps a KV prefix cache, so a short decoy request precedes every timed request to prevent the prefill from being skipped. Runs where `prompt_eval_count` is below 90% of the prompt length are flagged `prompt_cache_suspected`.
+Ollama keeps a KV prefix cache, so a short decoy request precedes every timed request, and the per-call prompt variants prevent reuse. Runs are flagged when an engine's own prompt token count differs from the target by more than 2 (for example an unintended chat template), when OpenVINO reports prefix-cache hits, or when `prompt_eval_count` is below 90% of the prompt length.
 
 ## Metrics
 
